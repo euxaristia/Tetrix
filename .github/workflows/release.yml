@@ -46,9 +46,9 @@ jobs:
           Start-Process -FilePath $installerPath `
             -ArgumentList "/S" -Wait -NoNewWindow
           $swiftBin = "$env:LOCALAPPDATA\Programs\Swift\bin"
-          $env:Path = "$swiftBin;$env:Path"
-          echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
-          swift --version
+          if (Test-Path $swiftBin) {
+            echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
@@ -88,7 +88,8 @@ jobs:
         env:
           VCPKG_ROOT: C:\vcpkg
         run: |
-          set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
+          set PATH=%LOCALAPPDATA%\Programs\Swift\bin;^
+          C:\vcpkg\installed\x64-windows-static\bin;%PATH%
           swift build -c release
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)
