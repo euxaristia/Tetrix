@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: "5.9"
+
+      - name: Setup Swift (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: "6.2"
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
+
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install sdl2 sdl2_ttf
+
+      - name: Build Release
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          swift build -c release
+
+      - name: Build Release (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
+        run: |
+          swift build -c release
+
+      - name: Create artifact name
+        id: artifact
+        run: |
+          OS_NAME="${{ matrix.os }}"
+          if [ "$OS_NAME" == "ubuntu-22.04" ]; then
+            ARTIFACT_NAME="tetrix-linux"
+          elif [ "$OS_NAME" == "macos-latest" ]; then
+            ARTIFACT_NAME="tetrix-macos"
+          fi
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create/Update Release and Upload Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest
+          name: Latest Build
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: .build/release/Tetrix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
