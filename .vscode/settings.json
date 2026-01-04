@@ -1,0 +1,5 @@
+{
+    // Prevent CodeLLDB from auto-detecting Swift's LLDB (which references liblldb.so.backup)
+    // Force it to use system LLDB library instead
+    "lldb.library": "/usr/lib/liblldb.so"
+}

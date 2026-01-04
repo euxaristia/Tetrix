@@ -1,0 +1,36 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Tetrix}",
+            "name": "Debug Tetrix",
+            "program": "${workspaceFolder:Tetrix}/.build/debug/Tetrix",
+            "preLaunchTask": "swift: Build Debug Tetrix",
+            "env": {
+                "PYTHONHOME": "/usr",
+                "CODELLDB_SKIP_SWIFT": "1"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Tetrix}",
+            "name": "Release Tetrix",
+            "program": "${workspaceFolder:Tetrix}/.build/release/Tetrix",
+            "preLaunchTask": "swift: Build Release Tetrix",
+            "env": {
+                "PYTHONHOME": "/usr",
+                "CODELLDB_SKIP_SWIFT": "1"
+            },
+            "console": "integratedTerminal"
+        }
+    ]
+}
