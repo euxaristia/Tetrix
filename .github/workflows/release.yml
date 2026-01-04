@@ -40,7 +40,8 @@ jobs:
         run: |
           winget install --id Swift.Toolchain -e `
             --accept-package-agreements `
-            --accept-source-agreements
+            --accept-source-agreements `
+            --silent
           $swiftBin = "$env:LOCALAPPDATA\Programs\Swift\bin"
           echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
