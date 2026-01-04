@@ -19,6 +19,7 @@ class SDL2Game {
     private var dPadDownHeld = false
     private var dPadDownRepeatTimer: Date = Date()
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
+    private var music: TetrisMusic?
     
     private let cellSize: Int32 = 30
     private let boardWidth = GameBoard.width
@@ -36,13 +37,16 @@ class SDL2Game {
         let boardPixelWidth = Int32(boardWidth) * cellSize
         let boardPixelHeight = Int32(boardHeight) * cellSize
         let sidePanelWidth: Int32 = 200
-        windowWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding
-        windowHeight = boardPixelHeight + 80 // Increased padding to fit all controls text
+        windowWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding (20 on each side)
+        windowHeight = boardPixelHeight + 40 // 40 for padding (20 on top and bottom)
         
-        let result = SDL_Init(UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMECONTROLLER))
+        let result = SDL_Init(UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMECONTROLLER) | UInt32(SDL_INIT_AUDIO))
         if result != 0 {
             print("SDL_Init failed: \(result)")
         }
+        
+        // Initialize music (after SDL audio subsystem is initialized)
+        music = TetrisMusic()
         
         // Initialize game controller subsystem and detect controllers
         detectController()
@@ -81,6 +85,9 @@ class SDL2Game {
         
         // Now show the window after first frame is rendered
         SDL_ShowWindow(window)
+        
+        // Start playing the classic Tetris theme
+        music?.start()
     }
     
     deinit {
@@ -114,6 +121,9 @@ class SDL2Game {
             
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat()
+            
+            // Update music
+            music?.update()
             
             // Update game (drop piece based on level)
             let dropInterval = getDropInterval()
@@ -370,15 +380,15 @@ class SDL2Game {
         }
         
         // Controls hint - switch between keyboard and controller
-        // Position controls text with padding from bottom to avoid overflow
-        let controlsStartY = Int32(windowHeight) - 130
+        // Position controls text in the side panel, aligned with board bottom
+        let controlsStartY = boardY + boardPixelHeight - 110 // Position controls in side panel
         drawText(x: panelX, y: controlsStartY, text: "Controls:", r: 150, g: 150, b: 150)
         if usingController && controller != nil {
             // Controller controls (D-pad and buttons only, no joystick)
             drawText(x: panelX, y: controlsStartY + 20, text: "D-Pad: Move", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 40, text: "D-Pad Down: Drop", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 60, text: "D-Pad Up/X: Rot", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 80, text: "Options: Pause", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 40, text: "D-Pad Dn: Drop", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 60, text: "Up/X: Rotate", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 80, text: "Opt: Pause", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 100, text: "Share: Quit", r: 130, g: 130, b: 130)
         } else {
             // Keyboard controls

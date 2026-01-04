@@ -28,7 +28,8 @@ let package = Package(
                 "TetrisEngine.swift",
                 "GameBoard.swift",
                 "Tetromino.swift",
-                "Position.swift"
+                "Position.swift",
+                "TetrisMusic.swift"
             ],
             linkerSettings: [
                 .linkedLibrary("SDL2"),
