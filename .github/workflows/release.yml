@@ -77,9 +77,12 @@ jobs:
         shell: cmd
         env:
           VCPKG_ROOT: C:\vcpkg
+          PKG_CONFIG_PATH: >-
+            C:\vcpkg\installed\x64-windows-static\lib\pkgconfig
         run: |
           set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
-          swift build -c release
+          swift build -c release -Xlinker /LIBPATH:^
+            C:\vcpkg\installed\x64-windows-static\lib
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)
         if: matrix.os != 'windows-latest'

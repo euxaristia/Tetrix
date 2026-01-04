@@ -31,6 +31,10 @@ let package = Package(
                 "Position.swift",
                 "TetrisMusic.swift"
             ],
+            exclude: [
+                "README.md",
+                "DEBUG.md"
+            ],
             linkerSettings: [
                 .linkedLibrary("SDL2"),
                 .linkedLibrary("SDL2_ttf")
