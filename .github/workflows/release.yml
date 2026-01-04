@@ -17,14 +17,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-latest]
-        include:
-          - os: ubuntu-22.04
-            build_windows: false
-          - os: ubuntu-22.04
-            build_windows: true
-          - os: macos-latest
-            build_windows: false
+        os: [ubuntu-22.04, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -34,31 +27,21 @@ jobs:
         with:
           swift-version: "5.9"
 
-      - name: Setup Windows cross-compilation (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04' && matrix.build_windows == true
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mingw-w64 \
-            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
-          SDL2_URL="https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-devel-2.28.5-mingw.tar.gz"
-          SDL2_TTF_URL="https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-devel-2.20.2-mingw.tar.gz"
-          wget -q "$SDL2_URL"
-          wget -q "$SDL2_TTF_URL"
-          mkdir -p windows-sdl2
-          tar -xzf SDL2-devel-2.28.5-mingw.tar.gz \
-            -C windows-sdl2 --strip-components=1
-          tar -xzf SDL2_ttf-devel-2.20.2-mingw.tar.gz \
-            -C windows-sdl2 \
-            --strip-components=1
-
       - name: Setup Swift (macOS)
         if: matrix.os == 'macos-latest'
         uses: SwiftyLab/setup-swift@latest
         with:
           swift-version: "6.2"
 
+      - name: Setup Swift (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-5.10-release
+          tag: 5.10-RELEASE
+
       - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04' && matrix.build_windows == false
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
@@ -68,23 +51,19 @@ jobs:
         run: |
           brew install sdl2 sdl2_ttf
 
-      - name: Build Release (Linux native)
-        if: matrix.os == 'ubuntu-22.04' && matrix.build_windows == false
+      - name: Install vcpkg and SDL2 (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install sdl2:x64-windows-static ^
+            sdl2-ttf:x64-windows-static
+
+      - name: Build Release (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           swift build -c release
-
-      - name: Build Release (Windows cross-compile)
-        if: matrix.os == 'ubuntu-22.04' && matrix.build_windows == true
-        env:
-          SDL2_MINGW_ROOT: >-
-            ${{ github.workspace }}/windows-sdl2/x86_64-w64-mingw32
-          PKG_CONFIG_PATH: >-
-            ${{ github.workspace }}/windows-sdl2/x86_64-w64-mingw32/\
-            lib/pkgconfig
-        run: |
-          export PATH=$PATH:/usr/x86_64-w64-mingw32/bin
-          swift build -c release -Xswiftc -target \
-            -Xswiftc x86_64-unknown-windows-gnu
 
       - name: Build Release (macOS)
         if: matrix.os == 'macos-latest'
@@ -93,8 +72,17 @@ jobs:
         run: |
           swift build -c release
 
+      - name: Build Release (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        env:
+          VCPKG_ROOT: C:\vcpkg
+        run: |
+          set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
+          swift build -c release
+
       - name: Create/Update Release and Upload Asset (Linux/macOS)
-        if: matrix.build_windows == false
+        if: matrix.os != 'windows-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest
@@ -107,7 +95,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create/Update Release and Upload Asset (Windows)
-        if: matrix.build_windows == true
+        if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest
@@ -115,6 +103,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-          files: .build/x86_64-unknown-windows-gnu/release/Tetrix.exe
+          files: .build/release/Tetrix.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
