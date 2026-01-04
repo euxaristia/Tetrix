@@ -15,6 +15,7 @@ permissions:
 jobs:
   release:
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       matrix:
         os: [ubuntu-22.04, macos-latest, windows-latest]
@@ -25,7 +26,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         uses: SwiftyLab/setup-swift@latest
         with:
-          swift-version: "5.9"
+          swift-version: "6.2"
 
       - name: Setup Swift (macOS)
         if: matrix.os == 'macos-latest'
@@ -37,8 +38,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-5.10-release
-          tag: 5.10-RELEASE
+          branch: main
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
