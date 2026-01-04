@@ -22,6 +22,10 @@ let package = Package(
             name: "Tetrix",
             dependencies: ["CSDL2"],
             path: ".",
+            exclude: [
+                "README.md",
+                "DEBUG.md"
+            ],
             sources: [
                 "main.swift",
                 "SDL2Game.swift",
@@ -30,10 +34,6 @@ let package = Package(
                 "Tetromino.swift",
                 "Position.swift",
                 "TetrisMusic.swift"
-            ],
-            exclude: [
-                "README.md",
-                "DEBUG.md"
             ],
             linkerSettings: [
                 .linkedLibrary("SDL2"),
