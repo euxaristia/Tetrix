@@ -38,17 +38,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $baseUrl = "https://download.swift.org/swift-6.3-branch/windows10/"
-          $snapshot = "swift-6.3-DEVELOPMENT-SNAPSHOT-2026-01-03-a"
-          $swiftUrl = "$baseUrl$snapshot/$snapshot-windows10.exe"
-          $installerPath = "$env:TEMP\swift-installer.exe"
-          Invoke-WebRequest -Uri $swiftUrl -OutFile $installerPath
-          Start-Process -FilePath $installerPath `
-            -ArgumentList "/S" -Wait -NoNewWindow
+          winget install --id Swift.Toolchain -e `
+            --accept-package-agreements `
+            --accept-source-agreements
           $swiftBin = "$env:LOCALAPPDATA\Programs\Swift\bin"
-          if (Test-Path $swiftBin) {
-            echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
-          }
+          echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
@@ -88,8 +82,7 @@ jobs:
         env:
           VCPKG_ROOT: C:\vcpkg
         run: |
-          set PATH=%LOCALAPPDATA%\Programs\Swift\bin;^
-          C:\vcpkg\installed\x64-windows-static\bin;%PATH%
+          set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
           swift build -c release
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)
