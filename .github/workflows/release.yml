@@ -36,26 +36,9 @@ jobs:
 
       - name: Setup Swift (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          winget install --id Swift.Toolchain -e `
-            --accept-package-agreements `
-            --accept-source-agreements `
-            --silent
-          Start-Sleep -Seconds 5
-          $possiblePaths = @(
-            "$env:LOCALAPPDATA\Programs\Swift\bin",
-            "$env:ProgramFiles\Swift\bin",
-            "$env:ProgramFiles(x86)\Swift\bin",
-            "C:\Library\Developer\Toolchains\unknown-Asserts-development.xctoolchain\usr\bin"
-          )
-          foreach ($path in $possiblePaths) {
-            if (Test-Path $path) {
-              echo "$path" | Out-File -FilePath $env:GITHUB_PATH -Append
-              Write-Host "Found Swift at: $path"
-              break
-            }
-          }
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: "5.10"
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
@@ -91,36 +74,11 @@ jobs:
 
       - name: Build Release (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
+        shell: cmd
         env:
           VCPKG_ROOT: C:\vcpkg
         run: |
-          $swiftPaths = @(
-            "$env:LOCALAPPDATA\Programs\Swift\bin",
-            "$env:ProgramFiles\Swift\bin",
-            "$env:ProgramFiles(x86)\Swift\bin",
-            "C:\Library\Developer\Toolchains\unknown-Asserts-development.xctoolchain\usr\bin"
-          )
-          $swiftFound = $false
-          foreach ($path in $swiftPaths) {
-            if (Test-Path $path) {
-              $swiftExe = Join-Path $path "swift.exe"
-              if (Test-Path $swiftExe) {
-                $vcpkgBin = "C:\vcpkg\installed\x64-windows-static\bin"
-                $env:Path = "$path;$vcpkgBin;$env:Path"
-                Write-Host "Using Swift from: $path"
-                $swiftFound = $true
-                break
-              }
-            }
-          }
-          if (-not $swiftFound) {
-            Write-Host "Swift not found in any of the expected locations"
-            Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" `
-              -Recurse -Filter "swift.exe" -ErrorAction SilentlyContinue `
-              | Select-Object -First 1 -ExpandProperty FullName
-            exit 1
-          }
+          set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
           swift build -c release
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)
