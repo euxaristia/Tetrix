@@ -13,6 +13,13 @@ class SDL2Game {
     private let engine: TetrisEngine
     private var running = true
     
+    private var controller: OpaquePointer? = nil
+    private var usingController = false
+    private var isFullscreen = false
+    private var dPadDownHeld = false
+    private var dPadDownRepeatTimer: Date = Date()
+    private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
+    
     private let cellSize: Int32 = 30
     private let boardWidth = GameBoard.width
     private let boardHeight = GameBoard.height
@@ -30,12 +37,15 @@ class SDL2Game {
         let boardPixelHeight = Int32(boardHeight) * cellSize
         let sidePanelWidth: Int32 = 200
         windowWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding
-        windowHeight = boardPixelHeight + 40
+        windowHeight = boardPixelHeight + 80 // Increased padding to fit all controls text
         
-        let result = SDL_Init(SDL_INIT_VIDEO)
+        let result = SDL_Init(UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMECONTROLLER))
         if result != 0 {
             print("SDL_Init failed: \(result)")
         }
+        
+        // Initialize game controller subsystem and detect controllers
+        detectController()
         
         // Try to initialize TTF, but continue if it fails (text rendering will be skipped)
         if TTF_Init() != 0 {
@@ -74,6 +84,9 @@ class SDL2Game {
     }
     
     deinit {
+        if controller != nil {
+            SDL_GameControllerClose(controller)
+        }
         if font != nil {
             TTF_CloseFont(font)
         }
@@ -98,6 +111,9 @@ class SDL2Game {
             
             // Handle events
             handleEvents()
+            
+            // Handle held D-pad down for soft drop
+            handleDPadDownRepeat()
             
             // Update game (drop piece based on level)
             let dropInterval = getDropInterval()
@@ -132,9 +148,47 @@ class SDL2Game {
             case SDL_QUIT.rawValue:
                 running = false
             case SDL_KEYDOWN.rawValue:
+                usingController = false
                 handleKeyPress(&event.key.keysym)
+            case SDL_CONTROLLERDEVICEADDED.rawValue:
+                detectController()
+            case SDL_CONTROLLERDEVICEREMOVED.rawValue:
+                if controller != nil {
+                    SDL_GameControllerClose(controller)
+                    controller = nil
+                    usingController = false
+                }
+            case SDL_CONTROLLERBUTTONDOWN.rawValue:
+                usingController = true
+                handleControllerButtonDown(event.cbutton.button)
+            case SDL_CONTROLLERBUTTONUP.rawValue:
+                handleControllerButtonUp(event.cbutton.button)
             default:
                 break
+            }
+        }
+    }
+    
+    private func detectController() {
+        // Close existing controller if any
+        if controller != nil {
+            SDL_GameControllerClose(controller)
+            controller = nil
+        }
+        
+        // Find first available game controller
+        let numJoysticks = SDL_NumJoysticks()
+        for i in 0..<numJoysticks {
+            if SDL_IsGameController(i) == SDL_TRUE {
+                controller = SDL_GameControllerOpen(i)
+                if controller != nil {
+                    let name = SDL_GameControllerName(controller)
+                    if name != nil {
+                        let nameString = String(cString: name!)
+                        print("Controller connected: \(nameString)")
+                    }
+                    break
+                }
             }
         }
     }
@@ -160,8 +214,75 @@ class SDL2Game {
             if engine.gameState == .gameOver {
                 engine.reset()
             }
+        case SDL_SCANCODE_F11:
+            toggleFullscreen()
+        case SDL_SCANCODE_ESCAPE:
+            if isFullscreen {
+                toggleFullscreen()
+            }
         default:
             break
+        }
+    }
+    
+    private func toggleFullscreen() {
+        guard let window = window else { return }
+        isFullscreen.toggle()
+        if isFullscreen {
+            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP.rawValue)
+        } else {
+            SDL_SetWindowFullscreen(window, 0)
+        }
+    }
+    
+    private func handleControllerButtonDown(_ button: UInt8) {
+        // SDL_GameControllerButton enum values
+        // A=0, B=1, X=2, Y=3, BACK=4, START=6
+        // DPAD_UP=11, DPAD_DOWN=12, DPAD_LEFT=13, DPAD_RIGHT=14
+        switch button {
+        case 11: // SDL_CONTROLLER_BUTTON_DPAD_UP
+            engine.rotate()
+        case 13: // SDL_CONTROLLER_BUTTON_DPAD_LEFT
+            engine.moveLeft()
+        case 14: // SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+            engine.moveRight()
+        case 12: // SDL_CONTROLLER_BUTTON_DPAD_DOWN
+            dPadDownHeld = true
+            dPadDownRepeatTimer = Date()
+            _ = engine.moveDown() // Immediate action
+        case 0: // SDL_CONTROLLER_BUTTON_A (X button on DualSense)
+            engine.rotate()
+        case 6: // SDL_CONTROLLER_BUTTON_START (Options button on DualSense)
+            engine.pause()
+        case 4: // SDL_CONTROLLER_BUTTON_BACK (Share button on DualSense)
+            running = false
+        case 1: // SDL_CONTROLLER_BUTTON_B (Circle button on DualSense) - restart on game over
+            if engine.gameState == .gameOver {
+                engine.reset()
+            }
+        default:
+            break
+        }
+    }
+    
+    private func handleControllerButtonUp(_ button: UInt8) {
+        switch button {
+        case 12: // SDL_CONTROLLER_BUTTON_DPAD_DOWN
+            dPadDownHeld = false
+        default:
+            break
+        }
+    }
+    
+    private func handleDPadDownRepeat() {
+        guard dPadDownHeld else { return }
+        
+        let now = Date()
+        let timeSinceLastAction = now.timeIntervalSince(dPadDownRepeatTimer)
+        
+        if timeSinceLastAction >= dPadDownRepeatInterval {
+            _ = engine.moveDown()
+            dPadDownRepeatTimer = Date()
         }
     }
     
@@ -248,12 +369,25 @@ class SDL2Game {
             drawText(x: boardX + boardPixelWidth / 2 - 60, y: boardY + boardPixelHeight / 2, text: "Press R", r: 200, g: 200, b: 200)
         }
         
-        // Controls hint
-        drawText(x: panelX, y: Int32(windowHeight) - 120, text: "Controls:", r: 150, g: 150, b: 150)
-        drawText(x: panelX, y: Int32(windowHeight) - 100, text: "WASD/Arrows", r: 130, g: 130, b: 130)
-        drawText(x: panelX, y: Int32(windowHeight) - 80, text: "Space: Drop", r: 130, g: 130, b: 130)
-        drawText(x: panelX, y: Int32(windowHeight) - 60, text: "P: Pause", r: 130, g: 130, b: 130)
-        drawText(x: panelX, y: Int32(windowHeight) - 40, text: "Q: Quit", r: 130, g: 130, b: 130)
+        // Controls hint - switch between keyboard and controller
+        // Position controls text with padding from bottom to avoid overflow
+        let controlsStartY = Int32(windowHeight) - 130
+        drawText(x: panelX, y: controlsStartY, text: "Controls:", r: 150, g: 150, b: 150)
+        if usingController && controller != nil {
+            // Controller controls (D-pad and buttons only, no joystick)
+            drawText(x: panelX, y: controlsStartY + 20, text: "D-Pad: Move", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 40, text: "D-Pad Down: Drop", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 60, text: "D-Pad Up/X: Rot", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 80, text: "Options: Pause", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 100, text: "Share: Quit", r: 130, g: 130, b: 130)
+        } else {
+            // Keyboard controls
+            drawText(x: panelX, y: controlsStartY + 20, text: "WASD/Arrows", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 40, text: "Space: Drop", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 60, text: "P: Pause", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 80, text: "Q: Quit", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 100, text: "F11: Fullscreen", r: 130, g: 130, b: 130)
+        }
         
         SDL_RenderPresent(renderer)
     }
