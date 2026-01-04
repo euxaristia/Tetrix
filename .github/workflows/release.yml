@@ -42,8 +42,17 @@ jobs:
             --accept-package-agreements `
             --accept-source-agreements `
             --silent
-          $swiftBin = "$env:LOCALAPPDATA\Programs\Swift\bin"
-          echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $possiblePaths = @(
+            "$env:LOCALAPPDATA\Programs\Swift\bin",
+            "$env:ProgramFiles\Swift\bin",
+            "$env:ProgramFiles(x86)\Swift\bin"
+          )
+          foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+              echo "$path" | Out-File -FilePath $env:GITHUB_PATH -Append
+              break
+            }
+          }
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
@@ -79,12 +88,22 @@ jobs:
 
       - name: Build Release (Windows)
         if: matrix.os == 'windows-latest'
-        shell: cmd
+        shell: pwsh
         env:
           VCPKG_ROOT: C:\vcpkg
         run: |
-          set PATH=%LOCALAPPDATA%\Programs\Swift\bin;^
-          C:\vcpkg\installed\x64-windows-static\bin;%PATH%
+          $swiftPaths = @(
+            "$env:LOCALAPPDATA\Programs\Swift\bin",
+            "$env:ProgramFiles\Swift\bin",
+            "$env:ProgramFiles(x86)\Swift\bin"
+          )
+          foreach ($path in $swiftPaths) {
+            if (Test-Path $path) {
+              $vcpkgBin = "C:\vcpkg\installed\x64-windows-static\bin"
+              $env:Path = "$path;$vcpkgBin;$env:Path"
+              break
+            }
+          }
           swift build -c release
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)
