@@ -82,7 +82,8 @@ jobs:
         env:
           VCPKG_ROOT: C:\vcpkg
         run: |
-          set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
+          set PATH=%LOCALAPPDATA%\Programs\Swift\bin;^
+          C:\vcpkg\installed\x64-windows-static\bin;%PATH%
           swift build -c release
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)
