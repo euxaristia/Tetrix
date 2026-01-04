@@ -36,10 +36,19 @@ jobs:
 
       - name: Setup Swift (Windows)
         if: matrix.os == 'windows-latest'
-        uses: compnerd/gha-setup-swift@main
-        with:
-          swift-version: "6.3"
-          swift-build: "6.3-DEVELOPMENT-SNAPSHOT-2026-01-03-a"
+        shell: pwsh
+        run: |
+          $baseUrl = "https://download.swift.org/swift-6.3-branch/windows10/"
+          $snapshot = "swift-6.3-DEVELOPMENT-SNAPSHOT-2026-01-03-a"
+          $swiftUrl = "$baseUrl$snapshot/$snapshot-windows10.exe"
+          $installerPath = "$env:TEMP\swift-installer.exe"
+          Invoke-WebRequest -Uri $swiftUrl -OutFile $installerPath
+          Start-Process -FilePath $installerPath `
+            -ArgumentList "/S" -Wait -NoNewWindow
+          $swiftBin = "$env:LOCALAPPDATA\Programs\Swift\bin"
+          $env:Path = "$swiftBin;$env:Path"
+          echo "$swiftBin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          swift --version
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
