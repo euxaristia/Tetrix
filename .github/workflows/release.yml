@@ -9,6 +9,9 @@ on:
       - '**.md'
       - 'docs/**'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ${{ matrix.os }}
