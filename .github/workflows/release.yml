@@ -38,8 +38,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: compnerd/gha-setup-swift@main
         with:
-          swift-version: "6.2-RELEASE"
-          swift-build: "6.2-RELEASE"
+          swift-version: "6.3"
+          swift-build: "6.3-DEVELOPMENT-SNAPSHOT-2026-01-03-a"
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
