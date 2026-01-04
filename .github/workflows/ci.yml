@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main, master ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift (Ubuntu)
+      if: matrix.os == 'ubuntu-22.04'
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: "5.9"
+    
+    - name: Setup Swift (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: "6.2"
+    
+    - name: Install SDL2 (Ubuntu)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
+    
+    - name: Install SDL2 (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install sdl2 sdl2_ttf
+    
+    - name: Build project
+      if: matrix.os == 'ubuntu-22.04'
+      run: swift build
+    
+    - name: Build project (macOS)
+      if: matrix.os == 'macos-latest'
+      env:
+        LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
+      run: swift build
+    
+    - name: Build release
+      if: matrix.os == 'ubuntu-22.04'
+      run: swift build -c release
+    
+    - name: Build release (macOS)
+      if: matrix.os == 'macos-latest'
+      env:
+        LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
+      run: swift build -c release

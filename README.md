@@ -1,5 +1,7 @@
 # Tetrix - A Swift Tetris Implementation
 
+![CI](https://github.com/euxaristia/Tetrix/actions/workflows/ci.yml/badge.svg)
+
 A complete Tetris game implementation written from scratch in Swift using SDL2. Works on Linux and macOS.
 
 ## Features
