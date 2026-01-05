@@ -43,7 +43,8 @@ let package = Package(
                 "GameBoard.swift",
                 "Tetromino.swift",
                 "Position.swift",
-                "TetrisMusic.swift"
+                "TetrisMusic.swift",
+                "SettingsManager.swift"
             ],
             swiftSettings: [
                 // Aggressive obfuscation and optimization flags for release builds

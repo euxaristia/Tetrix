@@ -39,8 +39,8 @@ class TetrisMusic {
     private var isPlaying = false
     private var samplesGenerated = 0
     
-    // Tetris theme melody - Korobeiniki (classic Tetris Type A theme, loops continuously)
-    // Format: (note, duration in beats) - accurate to Game Boy version
+    // Tetris theme melody - Korobeiniki (classic Tetris Type A theme, complete loop)
+    // Format: (note, duration in beats) - extended to full Game Boy version
     private let melody: [(note: String, duration: Double)] = [
         // First phrase (2/4 time, eighth notes and quarter notes)
         ("E5", 0.5), ("B4", 0.5), ("C5", 0.5), ("D5", 0.5),
@@ -55,10 +55,24 @@ class TetrisMusic {
         ("D5", 1.0), ("F5", 0.5), ("A5", 0.5), ("G5", 0.5), ("F5", 0.5),
         ("E5", 1.0), ("C5", 0.5), ("E5", 0.5), ("D5", 0.5), ("C5", 0.5),
         ("B4", 1.0), ("B4", 0.5), ("C5", 0.5),
-        ("D5", 1.0), ("E5", 1.0), ("C5", 1.0), ("A4", 1.0), ("A4", 1.0)
+        ("D5", 1.0), ("E5", 1.0), ("C5", 1.0), ("A4", 1.0), ("A4", 1.0),
+        // Extended section - middle part of the full melody
+        ("E5", 0.5), ("B4", 0.5), ("C5", 0.5), ("D5", 0.5),
+        ("C5", 0.5), ("B4", 0.5), ("A4", 1.5),
+        ("A4", 0.5), ("C5", 0.5), ("E5", 0.5), ("D5", 0.5),
+        ("C5", 0.5), ("B4", 0.5), ("B4", 1.5),
+        ("C5", 0.5), ("D5", 0.5), ("E5", 1.0),
+        ("C5", 1.0), ("A4", 1.0), ("A4", 1.0),
+        // Final phrase leading back to start
+        ("D5", 1.0), ("F5", 0.5), ("A5", 0.5), ("G5", 0.5), ("F5", 0.5),
+        ("E5", 1.0), ("C5", 0.5), ("E5", 0.5), ("D5", 0.5), ("C5", 0.5),
+        ("B4", 1.0), ("B4", 0.5), ("C5", 0.5),
+        ("D5", 1.0), ("E5", 1.0), ("C5", 1.0), ("A4", 1.0),
+        // Extended ending for smoother loop - resolves more naturally
+        ("G4", 2.0), ("A4", 1.0), ("B4", 1.0)
     ]
     
-    private let tempo: Double = 144.0 // Beats per minute (matches Game Boy Tetris Type A tempo)
+    private let tempo: Double = 149.0 // Beats per minute (matches Game Boy Tetris Type A tempo more accurately)
     private var currentNoteIndex = 0
     
     init() {
@@ -132,7 +146,7 @@ class TetrisMusic {
         let numSamples = Int(Double(sampleRate) * duration)
         var samples = [Int16](repeating: 0, count: numSamples)
         
-        let amplitude: Double = 7000.0 // 16-bit audio, reduced volume (~21% of range) for background music
+        let amplitude: Double = 5500.0 // 16-bit audio, quiet volume (~17% of range) for background music
         let twoPi = 2.0 * Double.pi
         
         for i in 0..<numSamples {

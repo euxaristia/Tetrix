@@ -48,7 +48,24 @@ jobs:
       if: matrix.os == 'ubuntu-22.04'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsdl3-dev libsdl3-ttf-dev
+        sudo apt-get install -y build-essential cmake libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libwayland-dev libdbus-1-dev libpipewire-0.3-dev libpulse-dev libasound2-dev git
+        # Build SDL3 from source
+        cd /tmp
+        git clone --depth 1 --branch SDL3 https://github.com/libsdl-org/SDL.git sdl3-build
+        cd sdl3-build
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF
+        cmake --build . -j$(nproc)
+        sudo cmake --install .
+        # Build SDL3_ttf from source
+        cd /tmp
+        git clone --depth 1 --branch SDL3 https://github.com/libsdl-org/SDL_ttf.git sdl3-ttf-build
+        cd sdl3-ttf-build
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL3TTF_SHARED=ON -DSDL3TTF_STATIC=OFF
+        cmake --build . -j$(nproc)
+        sudo cmake --install .
+        sudo ldconfig
     
     - name: Install SDL3 (macOS)
       if: matrix.os == 'macos-latest'
@@ -78,6 +95,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: latest
+        target_commitish: ${{ github.sha }}
         name: Latest Build
         draft: false
         prerelease: false
@@ -91,6 +109,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: latest
+        target_commitish: ${{ github.sha }}
         name: Latest Build
         draft: false
         prerelease: false

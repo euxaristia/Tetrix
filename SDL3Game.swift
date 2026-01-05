@@ -28,6 +28,8 @@ class SDL3Game {
     private var lastDropTime: Date = Date() // Track automatic drop timing, reset when piece locks
     private var music: TetrisMusic?
     private var musicEnabled = true
+    private var highScore: Int = 0
+    private let settingsManager = SettingsManager.shared
     
     private let cellSize: Int32 = 30
     private let boardWidth = GameBoard.width
@@ -37,6 +39,12 @@ class SDL3Game {
     
     init() {
         engine = TetrisEngine()
+        
+        // Load settings
+        let settings = settingsManager.loadSettings()
+        highScore = settings.highScore
+        musicEnabled = settings.musicEnabled
+        isFullscreen = settings.isFullscreen
         
         // No need to set video driver - SDL3 will auto-detect on Windows
         
@@ -119,11 +127,19 @@ class SDL3Game {
         // Render initial frame while window is hidden
         render()
         
+        // Apply fullscreen state if it was saved
+        if isFullscreen {
+            _ = SDL_SetWindowFullscreen(window, true)
+            _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
+        }
+        
         // Now show the window after first frame is rendered
         SDL_ShowWindow(window)
         
-        // Start playing the classic Tetris theme
-        music?.start()
+        // Start playing the classic Tetris theme if music is enabled
+        if musicEnabled {
+            music?.start()
+        }
     }
     
     deinit {
@@ -309,6 +325,15 @@ class SDL3Game {
         } else {
             music?.stop()
         }
+        saveSettings()
+    }
+    
+    private func saveSettings() {
+        var settings = GameSettings()
+        settings.highScore = highScore
+        settings.musicEnabled = musicEnabled
+        settings.isFullscreen = isFullscreen
+        settingsManager.saveSettings(settings)
     }
     
     private func toggleFullscreen() {
@@ -325,6 +350,7 @@ class SDL3Game {
             // Disable logical presentation in windowed mode - use native size
             _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_DISABLED)
         }
+        saveSettings()
     }
     
     private func handleGamepadButtonDown(_ button: UInt32) {
@@ -471,19 +497,26 @@ class SDL3Game {
         let panelX = boardX + boardPixelWidth + 20
         let panelY = boardY
         
+        // Update high score if current score is higher
+        if engine.score > highScore {
+            highScore = engine.score
+            saveSettings()
+        }
+        
         // Score and info
         drawText(x: panelX, y: panelY, text: "Score: \(engine.score)", r: 255, g: 255, b: 255)
-        drawText(x: panelX, y: panelY + 30, text: "Lines: \(engine.linesCleared)", r: 255, g: 255, b: 255)
-        drawText(x: panelX, y: panelY + 60, text: "Level: \(engine.level)", r: 255, g: 255, b: 255)
+        drawText(x: panelX, y: panelY + 30, text: "High: \(highScore)", r: 255, g: 255, b: 255)
+        drawText(x: panelX, y: panelY + 60, text: "Lines: \(engine.linesCleared)", r: 255, g: 255, b: 255)
+        drawText(x: panelX, y: panelY + 90, text: "Level: \(engine.level)", r: 255, g: 255, b: 255)
         
         // Next piece
-        drawText(x: panelX, y: panelY + 120, text: "Next:", r: 255, g: 255, b: 255)
+        drawText(x: panelX, y: panelY + 130, text: "Next:", r: 255, g: 255, b: 255)
         
         let nextBlocks = engine.nextPiece.getBlocks()
         let minX = nextBlocks.map { $0.x }.min() ?? 0
         let minY = nextBlocks.map { $0.y }.min() ?? 0
         let nextStartX = panelX
-        let nextStartY = panelY + 150
+        let nextStartY = panelY + 160
         
         for block in nextBlocks {
             let x = block.x - minX
@@ -507,10 +540,10 @@ class SDL3Game {
         let nextNextMinX = nextNextBlocks.map { $0.x }.min() ?? 0
         let nextNextMinY = nextNextBlocks.map { $0.y }.min() ?? 0
         let nextNextStartX = panelX
-        let nextNextStartY = panelY + 240 // Position below the next piece
+        let nextNextStartY = panelY + 250 // Position below the next piece
         
         // Draw label for next next piece (smaller text would be better, but using same size)
-        drawText(x: panelX, y: panelY + 210, text: "After:", r: 200, g: 200, b: 200)
+        drawText(x: panelX, y: panelY + 220, text: "After:", r: 200, g: 200, b: 200)
         
         for block in nextNextBlocks {
             let x = block.x - nextNextMinX
