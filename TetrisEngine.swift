@@ -10,6 +10,7 @@ class TetrisEngine {
     var board: GameBoard
     var currentPiece: Tetromino?
     var nextPiece: Tetromino
+    var nextNextPiece: Tetromino
     var score: Int = 0
     var linesCleared: Int = 0
     var level: Int = 1
@@ -27,13 +28,15 @@ class TetrisEngine {
     init() {
         board = GameBoard()
         nextPiece = Tetromino(type: TetrominoType.allCases.randomElement()!, position: Position(x: GameBoard.width / 2 - 1, y: 0))
+        nextNextPiece = Tetromino(type: TetrominoType.allCases.randomElement()!, position: Position(x: GameBoard.width / 2 - 1, y: 0))
         spawnNextPiece()
     }
     
     func spawnNextPiece() {
         currentPiece = nextPiece
+        nextPiece = nextNextPiece
         let nextType = TetrominoType.allCases.randomElement()!
-        nextPiece = Tetromino(type: nextType, position: Position(x: GameBoard.width / 2 - 1, y: 0))
+        nextNextPiece = Tetromino(type: nextType, position: Position(x: GameBoard.width / 2 - 1, y: 0))
         
         // Check if game is over
         if let piece = currentPiece, !board.canPlace(piece) {
@@ -146,6 +149,7 @@ class TetrisEngine {
         level = 1
         gameState = .playing
         nextPiece = Tetromino(type: TetrominoType.allCases.randomElement()!, position: Position(x: GameBoard.width / 2 - 1, y: 0))
+        nextNextPiece = Tetromino(type: TetrominoType.allCases.randomElement()!, position: Position(x: GameBoard.width / 2 - 1, y: 0))
         spawnNextPiece()
         lastDropTime = Date()
     }

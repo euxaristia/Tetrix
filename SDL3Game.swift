@@ -25,6 +25,7 @@ class SDL3Game {
     private var dPadDownHeld = false
     private var dPadDownRepeatTimer: Date = Date()
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
+    private var lastDropTime: Date = Date() // Track automatic drop timing, reset when piece locks
     private var music: TetrisMusic?
     
     private let cellSize: Int32 = 30
@@ -142,7 +143,7 @@ class SDL3Game {
     }
     
     func run() {
-        var lastDropTime = Date()
+        lastDropTime = Date() // Initialize drop timer
         var lastFrameTime = Date()
         let targetFPS = 60.0
         let frameTime = 1.0 / targetFPS
@@ -255,7 +256,11 @@ class SDL3Game {
         case SDL_SCANCODE_D, SDL_SCANCODE_RIGHT:
             engine.moveRight()
         case SDL_SCANCODE_S, SDL_SCANCODE_DOWN:
-            _ = engine.moveDown()
+            let couldMove = engine.moveDown()
+            // If piece locked (couldn't move), reset the automatic drop timer
+            if !couldMove {
+                lastDropTime = Date()
+            }
         case SDL_SCANCODE_W, SDL_SCANCODE_UP:
             engine.rotate()
         case SDL_SCANCODE_SPACE:
@@ -282,12 +287,8 @@ class SDL3Game {
     private func toggleFullscreen() {
         guard let window = window else { return }
         isFullscreen.toggle()
-        if isFullscreen {
-            SDL_SetWindowFullscreenMode(window, nil) // nil = desktop fullscreen
-        } else {
-            // SDL3: Windowed mode API might be different
-            SDL_SetWindowFullscreenMode(window, nil) // Set to windowed by passing appropriate mode
-        }
+        // SDL3: Use SDL_SetWindowFullscreen to toggle fullscreen state
+        _ = SDL_SetWindowFullscreen(window, isFullscreen)
     }
     
     private func handleGamepadButtonDown(_ button: UInt32) {
@@ -304,7 +305,11 @@ class SDL3Game {
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = true
             dPadDownRepeatTimer = Date()
-            _ = engine.moveDown() // Immediate action
+            let couldMove = engine.moveDown() // Immediate action
+            // If piece locked (couldn't move), reset the automatic drop timer
+            if !couldMove {
+                lastDropTime = Date()
+            }
         case 0: // SDL_GAMEPAD_BUTTON_A (X button on DualSense)
             engine.rotate()
         case 6: // SDL_GAMEPAD_BUTTON_START (Options button on DualSense)
@@ -336,8 +341,13 @@ class SDL3Game {
         let timeSinceLastAction = now.timeIntervalSince(dPadDownRepeatTimer)
         
         if timeSinceLastAction >= dPadDownRepeatInterval {
-            _ = engine.moveDown()
+            let couldMove = engine.moveDown()
             dPadDownRepeatTimer = Date()
+            // If piece locked (couldn't move), reset the automatic drop timer
+            // so the next piece doesn't inherit the soft drop momentum
+            if !couldMove {
+                lastDropTime = Date()
+            }
         }
     }
     
@@ -411,6 +421,32 @@ class SDL3Game {
             // Border
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 100)
             // SDL3: RenderDrawRect might have different name - using RenderRect for now
+            SDL_RenderRect(renderer, &rect)
+        }
+        
+        // Next next piece (smaller)
+        let smallCellSize = Int32(Double(cellSize) * 0.6) // 60% of normal size
+        let nextNextBlocks = engine.nextNextPiece.getBlocks()
+        let nextNextMinX = nextNextBlocks.map { $0.x }.min() ?? 0
+        let nextNextMinY = nextNextBlocks.map { $0.y }.min() ?? 0
+        let nextNextStartX = panelX
+        let nextNextStartY = panelY + 240 // Position below the next piece
+        
+        // Draw label for next next piece (smaller text would be better, but using same size)
+        drawText(x: panelX, y: panelY + 210, text: "After:", r: 200, g: 200, b: 200)
+        
+        for block in nextNextBlocks {
+            let x = block.x - nextNextMinX
+            let y = block.y - nextNextMinY
+            let blockX = nextNextStartX + Int32(x) * smallCellSize
+            let blockY = nextNextStartY + Int32(y) * smallCellSize
+            var rect = SDL_FRect(x: Float(blockX), y: Float(blockY), w: Float(smallCellSize - 1), h: Float(smallCellSize - 1))
+            let color = getColor(engine.nextNextPiece.type.color)
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255)
+            SDL_RenderFillRect(renderer, &rect)
+            
+            // Border (thinner for smaller piece)
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80)
             SDL_RenderRect(renderer, &rect)
         }
         
