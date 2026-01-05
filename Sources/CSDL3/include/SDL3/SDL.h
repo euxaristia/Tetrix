@@ -11,6 +11,7 @@
 #include <SDL3/SDL_platform.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_assert.h>
+#include <SDL3/SDL_endian.h>
 
 // Video and rendering
 #include <SDL3/SDL_video.h>
