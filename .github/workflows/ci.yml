@@ -12,12 +12,15 @@ on:
       - '*.md'
       - 'docs/**'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-latest]
+        os: [ubuntu-22.04, macos-latest, windows-latest]
     
     steps:
     - name: Checkout code
@@ -27,13 +30,19 @@ jobs:
       if: matrix.os == 'ubuntu-22.04'
       uses: SwiftyLab/setup-swift@latest
       with:
-        swift-version: "5.9"
+        swift-version: "6.2"
     
     - name: Setup Swift (macOS)
       if: matrix.os == 'macos-latest'
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2"
+    
+    - name: Setup Swift (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: "5.10"
     
     - name: Install SDL3 (Ubuntu)
       if: matrix.os == 'ubuntu-22.04'
@@ -46,22 +55,46 @@ jobs:
       run: |
         brew install sdl3 sdl3_ttf
     
-    - name: Build project
+    - name: Build Release (Ubuntu)
       if: matrix.os == 'ubuntu-22.04'
-      run: swift build
+      run: |
+        swift build -c release
     
-    - name: Build project (macOS)
+    - name: Build Release (macOS)
       if: matrix.os == 'macos-latest'
       env:
         LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
-      run: swift build
+      run: |
+        swift build -c release
     
-    - name: Build release
-      if: matrix.os == 'ubuntu-22.04'
-      run: swift build -c release
+    - name: Build Release (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: |
+        swift build -c release
     
-    - name: Build release (macOS)
-      if: matrix.os == 'macos-latest'
+    - name: Create/Update Release and Upload Asset (Linux/macOS)
+      if: matrix.os != 'windows-latest' && github.event_name == 'push'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: latest
+        name: Latest Build
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: .build/release/Tetrix
       env:
-        LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
-      run: swift build -c release
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create/Update Release and Upload Asset (Windows)
+      if: matrix.os == 'windows-latest' && github.event_name == 'push'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: latest
+        name: Latest Build
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: .build/release/Tetrix.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
