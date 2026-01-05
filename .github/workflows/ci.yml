@@ -128,7 +128,7 @@ jobs:
             $_.Name -notmatch "SDL3_ttf" -and 
             $_.Name -notmatch "SDL3_test" -and 
             $_.Name -notmatch "\.dll\.lib$" -and
-            ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+            ($_.Name -match "^SDL3-static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3-staticd\.lib$")
           } | Select-Object -First 1
         }
         # If not found in install, try build output
@@ -142,7 +142,7 @@ jobs:
                 $_.Name -notmatch "SDL3_ttf" -and 
                 $_.Name -notmatch "SDL3_test" -and 
                 $_.Name -notmatch "\.dll\.lib$" -and
-                ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+                ($_.Name -match "^SDL3-static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3-staticd\.lib$")
               } | Select-Object -First 1
               if ($found) {
                 $sdl3Lib = $found
@@ -216,7 +216,7 @@ jobs:
           $_.Name -notmatch "SDL3_ttf" -and 
           $_.Name -notmatch "SDL3_test" -and 
           $_.Name -notmatch "\.dll\.lib$" -and
-          ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+          ($_.Name -match "^SDL3-static\.lib$" -or $_.Name -match "^SDL3-static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3-staticd\.lib$")
         } | Select-Object -First 1
         if (-not $sdl3LibPath) {
           # Try build directory - look in Release subdirectory
@@ -229,7 +229,7 @@ jobs:
                 $_.Name -notmatch "SDL3_ttf" -and 
                 $_.Name -notmatch "SDL3_test" -and 
                 $_.Name -notmatch "\.dll\.lib$" -and
-                ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+                ($_.Name -match "^SDL3-static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3-staticd\.lib$")
               } | Select-Object -First 1
               if ($found) {
                 $sdl3LibPath = $found
