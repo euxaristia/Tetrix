@@ -25,6 +25,11 @@ class SDL3Game {
     private var dPadDownHeld = false
     private var dPadDownRepeatTimer: Date = Date()
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
+    private var dPadLeftHeld = false
+    private var dPadLeftRepeatTimer: Date = Date()
+    private var dPadRightHeld = false
+    private var dPadRightRepeatTimer: Date = Date()
+    private let dPadHorizontalRepeatInterval: TimeInterval = 0.1 // Repeat interval for left/right movement
     private var downKeyHeld = false
     private var downKeyRepeatTimer: Date = Date()
     private let downKeyRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for keyboard soft drop
@@ -179,8 +184,16 @@ class SDL3Game {
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat()
             
+            // Handle held D-pad left/right for continuous movement
+            handleDPadHorizontalRepeat()
+            
             // Handle held down key for soft drop
             handleDownKeyRepeat()
+            
+            // Show cursor when paused, even if controller is in use
+            if engine.gameState == .paused {
+                _ = SDL_ShowCursor()
+            }
             
         // Update music (only if enabled)
         if musicEnabled {
@@ -248,8 +261,10 @@ class SDL3Game {
                 }
             case UInt32(SDL_EVENT_GAMEPAD_BUTTON_DOWN.rawValue):
                 if !usingController {
-                    // Hide cursor when controller is first used
-                    _ = SDL_HideCursor()
+                    // Hide cursor when controller is first used (unless paused)
+                    if engine.gameState != .paused {
+                        _ = SDL_HideCursor()
+                    }
                 }
                 usingController = true
                 handleGamepadButtonDown(UInt32(event.gbutton.button))
@@ -413,9 +428,13 @@ class SDL3Game {
         case 11: // SDL_GAMEPAD_BUTTON_DPAD_UP
             engine.rotate()
         case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
-            engine.moveLeft()
+            dPadLeftHeld = true
+            dPadLeftRepeatTimer = Date()
+            engine.moveLeft() // Immediate action
         case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
-            engine.moveRight()
+            dPadRightHeld = true
+            dPadRightRepeatTimer = Date()
+            engine.moveRight() // Immediate action
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = true
             dPadDownRepeatTimer = Date()
@@ -451,6 +470,10 @@ class SDL3Game {
         switch button {
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = false
+        case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
+            dPadLeftHeld = false
+        case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
+            dPadRightHeld = false
         default:
             break
         }
@@ -471,6 +494,28 @@ class SDL3Game {
                 dPadDownRepeatTimer = Date() // Reset repeat timer, but keep key held
                 let dropInterval = getDropInterval()
                 lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+            }
+        }
+    }
+    
+    private func handleDPadHorizontalRepeat() {
+        let now = Date()
+        
+        // Handle D-pad left repeat
+        if dPadLeftHeld {
+            let timeSinceLastAction = now.timeIntervalSince(dPadLeftRepeatTimer)
+            if timeSinceLastAction >= dPadHorizontalRepeatInterval {
+                engine.moveLeft()
+                dPadLeftRepeatTimer = Date()
+            }
+        }
+        
+        // Handle D-pad right repeat
+        if dPadRightHeld {
+            let timeSinceLastAction = now.timeIntervalSince(dPadRightRepeatTimer)
+            if timeSinceLastAction >= dPadHorizontalRepeatInterval {
+                engine.moveRight()
+                dPadRightRepeatTimer = Date()
             }
         }
     }
