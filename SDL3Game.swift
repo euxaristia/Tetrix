@@ -160,6 +160,9 @@ class SDL3Game {
             // Update music
             music?.update()
             
+            // Update line clearing animation
+            engine.updateLineClearing()
+            
             // Update game (drop piece based on level)
             let dropInterval = getDropInterval()
             if now.timeIntervalSince(lastDropTime) >= dropInterval {
@@ -267,8 +270,6 @@ class SDL3Game {
             engine.hardDrop()
         case SDL_SCANCODE_P:
             engine.pause()
-        case SDL_SCANCODE_Q:
-            running = false
         case SDL_SCANCODE_R:
             if engine.gameState == .gameOver {
                 engine.reset()
@@ -285,10 +286,19 @@ class SDL3Game {
     }
     
     private func toggleFullscreen() {
-        guard let window = window else { return }
+        guard let window = window, let renderer = renderer else { return }
         isFullscreen.toggle()
         // SDL3: Use SDL_SetWindowFullscreen to toggle fullscreen state
         _ = SDL_SetWindowFullscreen(window, isFullscreen)
+        
+        // Set logical presentation to scale content when fullscreen
+        if isFullscreen {
+            // Use letterbox mode to maintain aspect ratio and scale to fit screen
+            _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
+        } else {
+            // Disable logical presentation in windowed mode - use native size
+            _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_DISABLED)
+        }
     }
     
     private func handleGamepadButtonDown(_ button: UInt32) {
@@ -314,8 +324,6 @@ class SDL3Game {
             engine.rotate()
         case 6: // SDL_GAMEPAD_BUTTON_START (Options button on DualSense)
             engine.pause()
-        case 4: // SDL_GAMEPAD_BUTTON_BACK (Share button on DualSense)
-            running = false
         case 1: // SDL_GAMEPAD_BUTTON_B (Circle button on DualSense) - restart on game over
             if engine.gameState == .gameOver {
                 engine.reset()
@@ -374,10 +382,42 @@ class SDL3Game {
         
         // Draw placed blocks
         let cells = engine.board.getAllCells()
+        let linesToClear = engine.linesToClear
+        let flashProgress: Double
+        
+        if let startTime = engine.lineClearStartTime, !linesToClear.isEmpty {
+            let elapsed = Date().timeIntervalSince(startTime)
+            flashProgress = min(elapsed / engine.lineClearFlashDuration, 1.0)
+        } else {
+            flashProgress = 0.0
+        }
+        
+        // Calculate flash alpha (oscillates between 0 and 255)
+        let flashAlpha: UInt8
+        if flashProgress > 0 && flashProgress <= 1.0 {
+            // Flash effect: oscillate with decreasing intensity
+            let oscillation = sin(flashProgress * Double.pi * 8) // Fast flash (8 cycles)
+            let intensity = 1.0 - flashProgress // Fade out
+            flashAlpha = UInt8(max(0, min(255, (oscillation * 0.5 + 0.5) * intensity * 255)))
+        } else {
+            flashAlpha = 255
+        }
+        
         for y in 0..<boardHeight {
+            let isFlashing = linesToClear.contains(y)
             for x in 0..<boardWidth {
                 if let type = cells[y][x] {
-                    drawBlock(x: x, y: y, type: type, boardX: boardX, boardY: boardY)
+                    if isFlashing && flashProgress > 0 {
+                        // Draw flashing white overlay
+                        let pixelX = boardX + Int32(x) * cellSize
+                        let pixelY = boardY + Int32(y) * cellSize
+                        var flashRect = SDL_FRect(x: Float(pixelX), y: Float(pixelY), w: Float(cellSize - 2), h: Float(cellSize - 2))
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, flashAlpha)
+                        SDL_RenderFillRect(renderer, &flashRect)
+                    } else {
+                        // Normal block drawing
+                        drawBlock(x: x, y: y, type: type, boardX: boardX, boardY: boardY)
+                    }
                 }
             }
         }
@@ -471,14 +511,12 @@ class SDL3Game {
             drawText(x: panelX, y: controlsStartY + 40, text: "D-Pad Dn: Drop", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 60, text: "Up/X: Rotate", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "Opt: Pause", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 100, text: "Share: Quit", r: 130, g: 130, b: 130)
         } else {
             // Keyboard controls
             drawText(x: panelX, y: controlsStartY + 20, text: "WASD/Arrows", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 40, text: "Space: Drop", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 60, text: "P: Pause", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 80, text: "Q: Quit", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 100, text: "F11: Fullscreen", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 80, text: "F11: Fullscreen", r: 130, g: 130, b: 130)
         }
         
         SDL_RenderPresent(renderer)

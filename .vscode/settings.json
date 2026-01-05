@@ -1,5 +1,6 @@
 {
-    // Prevent CodeLLDB from auto-detecting Swift's LLDB (which references liblldb.so.backup)
-    // Force it to use system LLDB library instead
+    // Platform-specific LLDB library configuration
+    // Linux: Uses system LLDB library (prevents liblldb.so.backup errors)
+    // Windows: Comment out the line below - CodeLLDB uses its bundled LLDB library on Windows
     "lldb.library": "/usr/lib/liblldb.so"
 }

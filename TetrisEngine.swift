@@ -16,6 +16,12 @@ class TetrisEngine {
     var level: Int = 1
     var gameState: GameState = .playing
     
+    // Line clearing animation state
+    var linesToClear: [Int] = []
+    var lineClearStartTime: Date?
+    let lineClearFlashDuration: TimeInterval = 0.3 // Flash for 0.3 seconds
+    let lineClearTotalDuration: TimeInterval = 0.5 // Total animation duration
+    
     private var lastDropTime: Date = Date()
     private var dropInterval: TimeInterval {
         // Speed increases with level
@@ -45,7 +51,7 @@ class TetrisEngine {
     }
     
     func moveLeft() {
-        guard let piece = currentPiece, gameState == .playing else { return }
+        guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return }
         let moved = piece.moved(dx: -1, dy: 0)
         if board.canPlace(moved) {
             currentPiece = moved
@@ -53,7 +59,7 @@ class TetrisEngine {
     }
     
     func moveRight() {
-        guard let piece = currentPiece, gameState == .playing else { return }
+        guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return }
         let moved = piece.moved(dx: 1, dy: 0)
         if board.canPlace(moved) {
             currentPiece = moved
@@ -61,7 +67,7 @@ class TetrisEngine {
     }
     
     func moveDown() -> Bool {
-        guard let piece = currentPiece, gameState == .playing else { return false }
+        guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return false }
         let moved = piece.moved(dx: 0, dy: 1)
         if board.canPlace(moved) {
             currentPiece = moved
@@ -74,7 +80,7 @@ class TetrisEngine {
     }
     
     func rotate() {
-        guard let piece = currentPiece, gameState == .playing else { return }
+        guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return }
         let rotated = piece.rotated(clockwise: true)
         if board.canPlace(rotated) {
             currentPiece = rotated
@@ -91,7 +97,7 @@ class TetrisEngine {
     }
     
     func hardDrop() {
-        guard let piece = currentPiece, gameState == .playing else { return }
+        guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return }
         var dropped = piece
         var dropDistance = 0
         
@@ -111,21 +117,46 @@ class TetrisEngine {
         guard let piece = currentPiece else { return }
         board.place(piece)
         
-        // Clear lines and update score
-        let cleared = board.clearLines()
-        if cleared > 0 {
-            linesCleared += cleared
-            let points = [0, 100, 300, 500, 800][min(cleared, 4)]
-            score += points * level
-            level = (linesCleared / 10) + 1
+        // Check for full lines and start animation
+        linesToClear = board.getFullLines()
+        if !linesToClear.isEmpty {
+            lineClearStartTime = Date()
+            // Don't clear immediately - wait for animation
+            return
         }
         
+        // No lines to clear, spawn next piece immediately
         spawnNextPiece()
         lastDropTime = Date()
     }
     
+    func updateLineClearing() {
+        guard let startTime = lineClearStartTime, !linesToClear.isEmpty else { return }
+        let elapsed = Date().timeIntervalSince(startTime)
+        
+        if elapsed >= lineClearTotalDuration {
+            // Animation complete - actually clear the lines
+            let cleared = linesToClear.count
+            _ = board.clearLines() // Now actually clear them
+            linesCleared += cleared
+            let points = [0, 100, 300, 500, 800][min(cleared, 4)]
+            score += points * level
+            level = (linesCleared / 10) + 1
+            
+            // Reset animation state
+            linesToClear = []
+            lineClearStartTime = nil
+            
+            // Spawn next piece now that lines are cleared
+            spawnNextPiece()
+            lastDropTime = Date()
+        }
+    }
+    
     func update() {
         guard gameState == .playing else { return }
+        // Don't auto-drop pieces while lines are clearing
+        guard linesToClear.isEmpty else { return }
         let now = Date()
         if now.timeIntervalSince(lastDropTime) >= dropInterval {
             _ = moveDown()

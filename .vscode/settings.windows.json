@@ -1,0 +1,5 @@
+{
+    // Windows-specific settings for CodeLLDB
+    // On Windows, CodeLLDB uses its bundled LLDB library, so we don't specify lldb.library
+    // This file is automatically loaded on Windows, overriding settings.json
+}

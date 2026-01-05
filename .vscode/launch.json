@@ -7,30 +7,36 @@
         {
             "type": "lldb",
             "request": "launch",
-            "args": [],
-            "cwd": "${workspaceFolder:Tetrix}",
             "name": "Debug Tetrix",
-            "program": "${workspaceFolder:Tetrix}/.build/debug/Tetrix",
-            "preLaunchTask": "swift: Build Debug Tetrix",
-            "env": {
-                "PYTHONHOME": "/usr",
-                "CODELLDB_SKIP_SWIFT": "1"
+            "program": "${workspaceFolder}/.build/debug/Tetrix",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopOnEntry": false,
+            "sourceLanguages": ["swift", "c", "cpp"],
+            "linux": {
+                "program": "${workspaceFolder}/.build/debug/Tetrix"
             },
-            "console": "integratedTerminal"
+            "windows": {
+                "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/debug/Tetrix.exe"
+            }
         },
         {
             "type": "lldb",
             "request": "launch",
-            "args": [],
-            "cwd": "${workspaceFolder:Tetrix}",
             "name": "Release Tetrix",
-            "program": "${workspaceFolder:Tetrix}/.build/release/Tetrix",
-            "preLaunchTask": "swift: Build Release Tetrix",
-            "env": {
-                "PYTHONHOME": "/usr",
-                "CODELLDB_SKIP_SWIFT": "1"
+            "program": "${workspaceFolder}/.build/release/Tetrix",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopOnEntry": false,
+            "sourceLanguages": ["swift", "c", "cpp"],
+            "linux": {
+                "program": "${workspaceFolder}/.build/release/Tetrix"
             },
-            "console": "integratedTerminal"
+            "windows": {
+                "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/release/Tetrix.exe"
+            }
         }
     ]
 }

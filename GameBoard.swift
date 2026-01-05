@@ -65,6 +65,17 @@ struct GameBoard {
         return linesCleared
     }
     
+    // Get which lines are full (for animation before clearing)
+    func getFullLines() -> [Int] {
+        var fullLines: [Int] = []
+        for y in 0..<GameBoard.height {
+            if grid[y].allSatisfy({ $0 != nil }) {
+                fullLines.append(y)
+            }
+        }
+        return fullLines
+    }
+    
     func getCell(at position: Position) -> TetrominoType? {
         guard isPositionValid(position) else { return nil }
         return grid[position.y][position.x]
