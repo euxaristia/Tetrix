@@ -65,6 +65,8 @@ jobs:
         cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL3TTF_SHARED=ON -DSDL3TTF_STATIC=OFF
         cmake --build . -j$(nproc)
         sudo cmake --install .
+        # Verify libraries are installed
+        ls -la /usr/local/lib/libSDL3* || echo "SDL3 libraries not found in /usr/local/lib"
         sudo ldconfig
     
     - name: Install SDL3 (macOS)
@@ -74,6 +76,10 @@ jobs:
     
     - name: Build Release (Ubuntu)
       if: matrix.os == 'ubuntu-22.04'
+      env:
+        LIBRARY_PATH: /usr/local/lib
+        LD_LIBRARY_PATH: /usr/local/lib
+        PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
       run: |
         swift build -c release
     

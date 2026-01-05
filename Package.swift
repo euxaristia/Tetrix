@@ -21,9 +21,10 @@ let package = Package(
                 .headerSearchPath("include")
             ],
             linkerSettings: [
-                // Try to link directly to DLL if .lib not available (Windows only, but safe to include)
-                .unsafeFlags(["-L", "."], .when(configuration: .debug)),
-                .unsafeFlags(["-L", "."], .when(configuration: .release)),
+                // Windows: Try to link directly to DLL if .lib not available
+                .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
+                // Linux: Add /usr/local/lib for SDL3 built from source
+                .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
                 .linkedLibrary("SDL3"),
                 .linkedLibrary("SDL3_ttf")
             ]
@@ -57,9 +58,10 @@ let package = Package(
                 .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release)), // Cross-module optimization
             ],
             linkerSettings: [
-                // Try to link directly to DLL if .lib not available (Windows only, but safe to include)
-                .unsafeFlags(["-L", "."], .when(configuration: .debug)),
-                .unsafeFlags(["-L", "."], .when(configuration: .release)),
+                // Windows: Try to link directly to DLL if .lib not available
+                .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
+                // Linux: Add /usr/local/lib for SDL3 built from source
+                .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
                 .linkedLibrary("SDL3"),
                 .linkedLibrary("SDL3_ttf")
             ]
