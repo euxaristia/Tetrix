@@ -34,7 +34,7 @@ class TetrisMusic {
         "E6": 1318.51  // E6 (higher octave)
     ]
     
-    private var audioDevice: UInt32 = 0
+    private var audioStream: OpaquePointer? = nil  // SDL_AudioStream*
     private var sampleRate: Int = 44100
     private var isPlaying = false
     private var samplesGenerated = 0
@@ -65,16 +65,14 @@ class TetrisMusic {
     private func setupAudio() {
         var spec = SDL_AudioSpec()
         spec.freq = Int32(sampleRate)
-        spec.format = SDL_AUDIO_S16  // SDL3: format is now SDL_AudioFormat enum
-        spec.channels = 1
-        // SDL3: samples field removed, buffer size handled differently
+        spec.format = SDL_AUDIO_S16  // SDL3: 16-bit signed samples
+        spec.channels = 1  // Mono audio
         
-        // SDL3: SDL_OpenAudioDevice API changed - simplified signature
-        // Check SDL3 documentation for exact API, this is a placeholder
-        // audioDevice = SDL_OpenAudioDevice(nil, &spec)
-        // For now, disable audio until we can verify the correct SDL3 API
-        audioDevice = 0
-        if audioDevice == 0 {
+        // SDL3: Use SDL_OpenAudioDeviceStream to open device and create stream
+        // Pass nil for callback - we'll queue data manually
+        audioStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nil, nil)
+        
+        if audioStream == nil {
             if let error = SDL_GetError() {
                 let errorString = String(cString: error)
                 print("Warning: Failed to open audio device: \(errorString)")
@@ -84,11 +82,12 @@ class TetrisMusic {
             return
         }
         
-        SDL_ResumeAudioDevice(audioDevice) // Start playback
+        // SDL3: Device starts paused, resume to start playback
+        SDL_ResumeAudioStreamDevice(audioStream)
     }
     
     func start() {
-        guard audioDevice != 0 else { return }
+        guard audioStream != nil else { return }
         isPlaying = true
         currentNoteIndex = 0
         samplesGenerated = 0
@@ -103,15 +102,15 @@ class TetrisMusic {
     }
     
     func update() {
-        guard isPlaying, audioDevice != 0 else { return }
+        guard isPlaying, let stream = audioStream else { return }
         
         // Keep the audio queue filled (generate ahead)
-        // SDL3: Audio queue API changed - disable for now
-        let queuedSize: Int = 0  // SDL_GetQueuedAudioSize(audioDevice)
+        // SDL3: Use SDL_GetAudioStreamQueued to check queued data size
+        let queuedSize = SDL_GetAudioStreamQueued(stream)
         let bytesPerSecond = sampleRate * 2 // sampleRate * 2 bytes (16-bit) * 1 channel
         let targetQueueSize = bytesPerSecond / 4 // 250ms buffer
         
-        if UInt32(queuedSize) < targetQueueSize {
+        if queuedSize < targetQueueSize {
             generateAndQueueAudio()
         }
     }
@@ -151,18 +150,22 @@ class TetrisMusic {
         }
         
         samplesGenerated += numSamples
-        // SDL3: Audio queue API changed - disable for now
-        // let _ = samples.withUnsafeBufferPointer { buffer in
-        //     SDL_QueueAudio(audioDevice, buffer.baseAddress, UInt32(samples.count * 2))
-        // }
+        
+        // SDL3: Use SDL_PutAudioStreamData to queue audio data
+        guard let stream = audioStream else { return }
+        let _ = samples.withUnsafeBufferPointer { buffer in
+            let bytesToWrite = samples.count * 2  // 2 bytes per Int16 sample
+            SDL_PutAudioStreamData(stream, buffer.baseAddress, Int32(bytesToWrite))
+        }
         
         // Move to next note
         currentNoteIndex = (currentNoteIndex + 1) % melody.count
     }
     
     deinit {
-        if audioDevice != 0 {
-            SDL_CloseAudioDevice(audioDevice)
+        if let stream = audioStream {
+            // SDL3: Destroying the stream also closes the device
+            SDL_DestroyAudioStream(stream)
         }
     }
 }

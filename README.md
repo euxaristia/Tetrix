@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/euxaristia/Tetrix/actions/workflows/ci.yml/badge.svg)
 
-A complete Tetris game implementation written from scratch in Swift using SDL2. Works on Linux and macOS.
+A complete Tetris game implementation written from scratch in Swift using SDL3. Works on Windows, Linux and macOS.
 
 ## Features
 
@@ -14,7 +14,7 @@ A complete Tetris game implementation written from scratch in Swift using SDL2. 
 - Next piece preview
 - Pause/Resume functionality
 - Game over detection
-- Beautiful windowed interface with SDL2
+- Beautiful windowed interface with SDL3
 
 ## Game Controls
 
@@ -43,23 +43,27 @@ A complete Tetris game implementation written from scratch in Swift using SDL2. 
 
 ## Installation
 
+### Windows
+
+SDL3 libraries (`SDL3.dll` and `SDL3_ttf.dll`) and import libraries (`SDL3.lib` and `SDL3_ttf.lib`) are included in the project.
+
 ### Linux (Arch/CachyOS)
 
-Install SDL2 development libraries:
+Install SDL3 development libraries:
 ```bash
-sudo pacman -S sdl2 sdl2_ttf
+sudo pacman -S sdl3 sdl3_ttf
 ```
 
 ### Linux (Ubuntu/Debian)
 
 ```bash
-sudo apt-get install libsdl2-dev libsdl2-ttf-dev
+sudo apt-get install libsdl3-dev libsdl3-ttf-dev
 ```
 
 ### macOS
 
 ```bash
-brew install sdl2 sdl2_ttf
+brew install sdl3 sdl3_ttf
 ```
 
 ## Running the Game
@@ -77,24 +81,26 @@ swift build
 ## Requirements
 
 - Swift 5.9+
-- SDL2 development libraries
-- SDL2_ttf (optional, for text rendering - game works without it)
+- SDL3 development libraries
+- SDL3_ttf (for text rendering)
 
 ## Project Structure
 
 - `main.swift`: Application entry point
-- `SDL2Game.swift`: SDL2 game loop, rendering, and input handling
+- `SDL3Game.swift`: SDL3 game loop, rendering, and input handling
 - `Position.swift`: Coordinate system for board positions
 - `Tetromino.swift`: Tetromino piece definitions and rotations
 - `GameBoard.swift`: Game board logic and line clearing
 - `TetrisEngine.swift`: Main game engine and state management
-- `Sources/CSDL2/`: SDL2 C module wrapper
+- `TetrisMusic.swift`: Background music implementation
+- `Sources/CSDL3/`: SDL3 C module wrapper
 
 ## Notes
 
-- The game uses SDL2 for cross-platform windowed graphics
-- Text rendering requires SDL2_ttf, but the game will run without it (text just won't display)
-- The game runs at 60 FPS with VSync enabled
+- The game uses SDL3 for cross-platform windowed graphics
+- Text rendering requires SDL3_ttf
+- The game runs at 60 FPS
+- Supports gamepad/controller input
 
 ## License
 
