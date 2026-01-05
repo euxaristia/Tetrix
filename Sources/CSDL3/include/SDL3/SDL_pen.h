@@ -16,6 +16,18 @@ extern "C" {
 /* Pen ID type - minimal stub */
 typedef Uint32 SDL_PenID;
 
+/* Pen input flags - minimal stub */
+typedef Uint32 SDL_PenInputFlags;
+
+/* Pen axis enumeration - minimal stub */
+typedef enum {
+    SDL_PEN_AXIS_PRESSURE = 0,
+    SDL_PEN_AXIS_TILT_X,
+    SDL_PEN_AXIS_TILT_Y,
+    SDL_PEN_AXIS_ROTATION,
+    SDL_PEN_AXIS_DISTANCE
+} SDL_PenAxis;
+
 #ifdef __cplusplus
 }
 #endif

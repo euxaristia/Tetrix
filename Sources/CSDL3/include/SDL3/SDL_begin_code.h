@@ -165,6 +165,31 @@
 #endif
 #endif
 
+/* Thread safety annotations (for Clang thread safety analysis) */
+#ifndef SDL_ACQUIRE
+#ifdef __has_capability
+#if __has_capability(thread_safety)
+#define SDL_ACQUIRE(...) __attribute__((acquire_capability(__VA_ARGS__)))
+#else
+#define SDL_ACQUIRE(...)
+#endif
+#else
+#define SDL_ACQUIRE(...)
+#endif
+#endif
+
+#ifndef SDL_RELEASE
+#ifdef __has_capability
+#if __has_capability(thread_safety)
+#define SDL_RELEASE(...) __attribute__((release_capability(__VA_ARGS__)))
+#else
+#define SDL_RELEASE(...)
+#endif
+#else
+#define SDL_RELEASE(...)
+#endif
+#endif
+
 /* Force structure packing at 4 byte alignment (minimal - only for MSVC) */
 #if defined(_MSC_VER) || defined(__MWERKS__) || defined(__BORLANDC__)
 #ifdef _MSC_VER

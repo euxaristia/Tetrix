@@ -19,6 +19,8 @@ extern "C" {
  * \since This struct is available since SDL 3.0.0.
  */
 typedef struct SDL_GpuDevice SDL_GpuDevice;
+/* Compatibility alias for SDL_render.h (which uses SDL_GPUDevice) */
+typedef struct SDL_GpuDevice SDL_GPUDevice;
 
 /**
  * An opaque structure representing a GPU texture.
@@ -33,6 +35,30 @@ typedef struct SDL_GPUTexture SDL_GPUTexture;
  * \since This struct is available since SDL 3.0.0.
  */
 typedef struct SDL_GPURenderState SDL_GPURenderState;
+
+/**
+ * An opaque structure representing a GPU shader.
+ *
+ * \since This struct is available since SDL 3.0.0.
+ */
+typedef struct SDL_GPUShader SDL_GPUShader;
+
+/**
+ * An opaque structure representing a GPU buffer.
+ *
+ * \since This struct is available since SDL 3.0.0.
+ */
+typedef struct SDL_GPUBuffer SDL_GPUBuffer;
+
+/**
+ * GPU texture sampler binding structure - minimal stub.
+ *
+ * \since This struct is available since SDL 3.0.0.
+ */
+typedef struct {
+    Sint32 binding_index;
+    SDL_GPUTexture *texture;
+} SDL_GPUTextureSamplerBinding;
 
 #ifdef __cplusplus
 }
