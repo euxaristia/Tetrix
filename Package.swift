@@ -31,11 +31,13 @@ let package = Package(
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
                 .linkedLibrary("SDL3"),
                 .linkedLibrary("SDL3_ttf")
+                // Note: SDL3 automatically handles both X11 and Wayland - no need to link X11 directly
             ]
         ),
         .executableTarget(
             name: "Tetrix",
             dependencies: ["CSDL3", "Tenebris"],
+            // X11Interop is part of CSDL3 module
             path: "Sources/Tetrix",
             exclude: [
                 // No exclusions needed - all Swift files are in Sources/Tetrix
