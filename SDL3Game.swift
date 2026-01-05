@@ -288,10 +288,9 @@ class SDL3Game {
     }
     
     private func detectGamepad() {
-        // Close existing gamepad if any
+        // If we already have a gamepad, don't detect again (prevents duplicate messages)
         if gamepad != nil {
-            SDL_CloseGamepad(gamepad)
-            gamepad = nil
+            return
         }
         
         // Find first available gamepad

@@ -18,10 +18,12 @@ let package = Package(
             name: "CSDL3",
             path: "Sources/CSDL3",
             cSettings: [
-                .headerSearchPath("include")
+                .headerSearchPath("include"),
+                // Windows: Add header path for statically built SDL3
+                .headerSearchPath("sdl3-headers", .when(platforms: [.windows]))
             ],
             linkerSettings: [
-                // Windows: Try to link directly to DLL if .lib not available
+                // Windows: Link against static libraries (built in CI, renamed to standard names)
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
@@ -71,7 +73,7 @@ let package = Package(
                 .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release)), // Cross-module optimization
             ],
             linkerSettings: [
-                // Windows: Try to link directly to DLL if .lib not available
+                // Windows: Link against static libraries (built in CI, renamed to standard names)
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
