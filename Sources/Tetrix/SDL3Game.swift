@@ -115,18 +115,18 @@ class SDL3Game {
         render()
         
         // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
-        _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
+        _ = SDLWindowHelper.setLogicalPresentation(renderer: renderer, width: windowWidth, height: windowHeight, mode: SDL_LOGICAL_PRESENTATION_LETTERBOX)
         
         // Apply fullscreen state if it was saved
         if isFullscreen {
-            _ = SDL_SetWindowFullscreen(window, true)
+            _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: true)
         }
         
         // Now show the window after first frame is rendered
-        SDL_ShowWindow(window)
+        SDLWindowHelper.show(window: window)
         
         // Always maximize the window on startup
-        _ = SDL_MaximizeWindow(window)
+        _ = SDLWindowHelper.maximize(window: window)
         
         // Start playing the classic Tetris theme if music is enabled
         if musicEnabled {
@@ -198,11 +198,7 @@ class SDL3Game {
                 lastFrameTime = now
             } else {
                 // Sleep a bit to not waste CPU
-                #if os(Windows)
-                Sleep(1) // 1ms on Windows
-                #else
-                usleep(1000) // 1ms
-                #endif
+                PlatformHelper.sleep(milliseconds: 1)
             }
         }
     }
@@ -217,15 +213,15 @@ class SDL3Game {
     
     private func handleEvents() {
         var event = SDL_Event()
-        // SDL3: SDL_PollEvent returns Bool (true = event available, false = no events)
-        while SDL_PollEvent(&event) {
+        // Poll for events using Swift helper
+        while SDLEventHelper.pollEvent(&event) {
             switch event.type {
             case UInt32(SDL_EVENT_QUIT.rawValue):
                 running = false
             case UInt32(SDL_EVENT_KEY_DOWN.rawValue):
                 if !usingController {
                     // Only show cursor when keyboard is first used
-                    _ = SDL_ShowCursor()
+                    SDLCursorHelper.show()
                 }
                 usingController = false
                 handleKeyPress(&event.key)
@@ -239,13 +235,13 @@ class SDL3Game {
                     gamepad = nil
                     usingController = false
                     // Show cursor when gamepad is removed
-                    _ = SDL_ShowCursor()
+                    SDLCursorHelper.show()
                 }
             case UInt32(SDL_EVENT_GAMEPAD_BUTTON_DOWN.rawValue):
                 if !usingController {
                     // Hide cursor when controller is first used (unless paused)
                     if engine.gameState != .paused {
-                        _ = SDL_HideCursor()
+                        SDLCursorHelper.hide()
                     }
                 }
                 usingController = true
@@ -276,30 +272,21 @@ class SDL3Game {
         }
         
         // Find first available gamepad
-        // SDL3: API changed - check for correct function name
-        var count: Int32 = 0
-        let joysticks = SDL_GetJoysticks(&count)
-        if joysticks != nil {
-            for i in 0..<Int(count) {
-                if SDL_IsGamepad(joysticks![Int(i)]) {
-                    gamepad = SDL_OpenGamepad(joysticks![Int(i)])
-                    if gamepad != nil {
-                        let name = SDL_GetGamepadName(gamepad)
-                        if name != nil {
-                            if let name = name {
-                                let nameString = String(cString: name)
-                                print("Gamepad connected: \(nameString)")
-                            }
-                        }
-                        break
-                    }
+        // Find and open first available gamepad
+        let gamepadIDs = SDLGamepadHelper.getGamepadJoystickIDs()
+        for id in gamepadIDs {
+            gamepad = SDL_OpenGamepad(id)
+            if gamepad != nil {
+                if let name = SDLGamepadHelper.getName(gamepad: gamepad) {
+                    print("Gamepad connected: \(name)")
                 }
+                break
             }
         }
     }
     
     private func handleKeyRelease(_ keyEvent: UnsafePointer<SDL_KeyboardEvent>) {
-        let scancode = keyEvent.pointee.scancode
+        let scancode = SDLEventHelper.getScancode(from: keyEvent)
         
         switch scancode {
         case SDL_SCANCODE_S, SDL_SCANCODE_DOWN:
@@ -394,12 +381,12 @@ class SDL3Game {
     private func toggleFullscreen() {
         guard let window = window, let renderer = renderer else { return }
         isFullscreen.toggle()
-        // SDL3: Use SDL_SetWindowFullscreen to toggle fullscreen state
-        _ = SDL_SetWindowFullscreen(window, isFullscreen)
+        // Toggle fullscreen using Swift helper
+        _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: isFullscreen)
         
         // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
         // This ensures consistent scaling whether windowed, resized, snapped, or maximized
-        _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
+        _ = SDLWindowHelper.setLogicalPresentation(renderer: renderer, width: windowWidth, height: windowHeight, mode: SDL_LOGICAL_PRESENTATION_LETTERBOX)
         saveSettings()
     }
     
@@ -524,8 +511,8 @@ class SDL3Game {
     
     private func render() {
         // Clear screen with dark background
-        SDL_SetRenderDrawColor(renderer, 20, 20, 30, 255)
-        SDL_RenderClear(renderer)
+        SDLRenderHelper.setDrawColor(renderer: renderer, r: 20, g: 20, b: 30, a: 255)
+        SDLRenderHelper.clear(renderer: renderer)
         
         // Draw board background
         let boardX: Int32 = 20
@@ -534,14 +521,14 @@ class SDL3Game {
         let boardPixelHeight = Int32(boardHeight) * cellSize
         
         // Board border
-        SDL_SetRenderDrawColor(renderer, 100, 100, 120, 255)
+        SDLRenderHelper.setDrawColor(renderer: renderer, r: 100, g: 100, b: 120, a: 255)
         var borderRect = SDL_FRect(x: Float(boardX - 2), y: Float(boardY - 2), w: Float(boardPixelWidth + 4), h: Float(boardPixelHeight + 4))
-        SDL_RenderFillRect(renderer, &borderRect)
+        SDLRenderHelper.fillRect(renderer: renderer, rect: &borderRect)
         
         // Board background
-        SDL_SetRenderDrawColor(renderer, 30, 30, 40, 255)
+        SDLRenderHelper.setDrawColor(renderer: renderer, r: 30, g: 30, b: 40, a: 255)
         var boardRect = SDL_FRect(x: Float(boardX), y: Float(boardY), w: Float(boardPixelWidth), h: Float(boardPixelHeight))
-        SDL_RenderFillRect(renderer, &boardRect)
+        SDLRenderHelper.fillRect(renderer: renderer, rect: &boardRect)
         
         // Draw placed blocks
         let cells = engine.board.getAllCells()
@@ -609,8 +596,8 @@ class SDL3Game {
                                 w: Float(cellSize + 2),
                                 h: Float(cellSize + 2)
                             )
-                            SDL_SetRenderDrawColor(renderer, 255, 255, 200, UInt8(flashAlpha / 3))
-                            SDL_RenderFillRect(renderer, &glowRect)
+                            SDLRenderHelper.setDrawColor(renderer: renderer, r: 255, g: 255, b: 200, a: UInt8(flashAlpha / 3))
+                            SDLRenderHelper.fillRect(renderer: renderer, rect: &glowRect)
                             
                             // Inner glow (medium)
                             glowRect = SDL_FRect(
@@ -619,12 +606,12 @@ class SDL3Game {
                                 w: Float(cellSize),
                                 h: Float(cellSize)
                             )
-                            SDL_SetRenderDrawColor(renderer, 255, 255, 150, UInt8(flashAlpha / 2))
-                            SDL_RenderFillRect(renderer, &glowRect)
+                            SDLRenderHelper.setDrawColor(renderer: renderer, r: 255, g: 255, b: 150, a: UInt8(flashAlpha / 2))
+                            SDLRenderHelper.fillRect(renderer: renderer, rect: &glowRect)
                             
                             // Core flash (bright yellow-white)
-                            SDL_SetRenderDrawColor(renderer, 255, 255, 200, flashAlpha)
-                            SDL_RenderFillRect(renderer, &flashRect)
+                            SDLRenderHelper.setDrawColor(renderer: renderer, r: 255, g: 255, b: 200, a: flashAlpha)
+                            SDLRenderHelper.fillRect(renderer: renderer, rect: &flashRect)
                         }
                     } else {
                         // Normal block drawing
@@ -685,13 +672,13 @@ class SDL3Game {
             let blockY = nextStartY + Int32(y) * cellSize
             var rect = SDL_FRect(x: Float(blockX), y: Float(blockY), w: Float(cellSize - 2), h: Float(cellSize - 2))
             let color = getColor(engine.nextPiece.type.color)
-            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255)
-            SDL_RenderFillRect(renderer, &rect)
+            SDLRenderHelper.setDrawColor(renderer: renderer, r: color.r, g: color.g, b: color.b, a: 255)
+            SDLRenderHelper.fillRect(renderer: renderer, rect: &rect)
             
             // Border
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 100)
+            SDLRenderHelper.setDrawColor(renderer: renderer, r: 255, g: 255, b: 255, a: 100)
             // SDL3: RenderDrawRect might have different name - using RenderRect for now
-            SDL_RenderRect(renderer, &rect)
+            SDLRenderHelper.drawRect(renderer: renderer, rect: &rect)
         }
         
         // Next next piece (smaller)
@@ -712,12 +699,12 @@ class SDL3Game {
             let blockY = nextNextStartY + Int32(y) * smallCellSize
             var rect = SDL_FRect(x: Float(blockX), y: Float(blockY), w: Float(smallCellSize - 1), h: Float(smallCellSize - 1))
             let color = getColor(engine.nextNextPiece.type.color)
-            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255)
-            SDL_RenderFillRect(renderer, &rect)
+            SDLRenderHelper.setDrawColor(renderer: renderer, r: color.r, g: color.g, b: color.b, a: 255)
+            SDLRenderHelper.fillRect(renderer: renderer, rect: &rect)
             
             // Border (thinner for smaller piece)
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80)
-            SDL_RenderRect(renderer, &rect)
+            SDLRenderHelper.setDrawColor(renderer: renderer, r: 255, g: 255, b: 255, a: 80)
+            SDLRenderHelper.drawRect(renderer: renderer, rect: &rect)
         }
         
         // Game state
@@ -739,13 +726,13 @@ class SDL3Game {
             
             // Draw background box with border
             var boxRect = SDL_FRect(x: boxX - 4, y: boxY - 4, w: boxWidth + 8, h: boxHeight + 8)
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200) // Dark border
-            SDL_RenderFillRect(renderer, &boxRect)
+            SDLRenderHelper.setDrawColor(renderer: renderer, r: 0, g: 0, b: 0, a: 200) // Dark border
+            SDLRenderHelper.fillRect(renderer: renderer, rect: &boxRect)
             
             // Draw inner box
             boxRect = SDL_FRect(x: boxX, y: boxY, w: boxWidth, h: boxHeight)
-            SDL_SetRenderDrawColor(renderer, 30, 30, 40, 240) // Dark background
-            SDL_RenderFillRect(renderer, &boxRect)
+            SDLRenderHelper.setDrawColor(renderer: renderer, r: 30, g: 30, b: 40, a: 240) // Dark background
+            SDLRenderHelper.fillRect(renderer: renderer, rect: &boxRect)
             
             // Draw game over text
             drawText(x: Int32(boxX + boxWidth / 2 - 80), y: Int32(boxY + 15), text: "GAME OVER", r: 255, g: 0, b: 0)
@@ -793,11 +780,11 @@ class SDL3Game {
         var rect = SDL_FRect(x: Float(pixelX), y: Float(pixelY), w: Float(cellSize - 2), h: Float(cellSize - 2))
         
         let color = getColor(type.color)
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, alpha)
-        SDL_RenderFillRect(renderer, &rect)
+        SDLRenderHelper.setDrawColor(renderer: renderer, r: color.r, g: color.g, b: color.b, a: alpha)
+        SDLRenderHelper.fillRect(renderer: renderer, rect: &rect)
         
         // Highlight border (also fade with alpha)
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, UInt8((UInt16(alpha) * 100) / 255))
+        SDLRenderHelper.setDrawColor(renderer: renderer, r: 255, g: 255, b: 255, a: UInt8((UInt16(alpha) * 100) / 255))
         SDL_RenderRect(renderer, &rect)
     }
     
@@ -809,7 +796,7 @@ class SDL3Game {
         // Draw ghost piece as outline only (no fill, just border)
         let color = getColor(type.color)
         // Use a semi-transparent border color
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 80)
+        SDLRenderHelper.setDrawColor(renderer: renderer, r: color.r, g: color.g, b: color.b, a: 80)
         SDL_RenderRect(renderer, &rect)
     }
     
