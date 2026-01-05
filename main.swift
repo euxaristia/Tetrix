@@ -1,5 +1,5 @@
 import Foundation
-import CSDL2
+import CSDL3
 
-let game = SDL2Game()
+let game = SDL3Game()
 game.run()

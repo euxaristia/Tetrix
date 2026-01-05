@@ -10,17 +10,25 @@ let package = Package(
         )
     ],
     targets: [
-        .systemLibrary(
-            name: "CSDL2",
-            pkgConfig: "sdl2",
-            providers: [
-                .apt(["libsdl2-dev", "libsdl2-ttf-dev"]),
-                .brew(["sdl2", "sdl2_ttf"])
+        .target(
+            name: "CSDL3",
+            path: "Sources/CSDL3",
+            cSettings: [
+                .headerSearchPath("include")
+            ],
+            linkerSettings: [
+                // Try to link directly to DLL if .lib not available
+                .unsafeFlags(["-L", "."], .when(configuration: .debug)),
+                .unsafeFlags(["-L", "."], .when(configuration: .release)),
+                .linkedLibrary("SDL3"),
+                // Note: SDL3_ttf.lib will be needed for text rendering
+                // Generate it from SDL3_ttf.dll using: .\create_sdl3_ttf_lib.ps1
+                .linkedLibrary("SDL3_ttf")
             ]
         ),
         .executableTarget(
             name: "Tetrix",
-            dependencies: ["CSDL2"],
+            dependencies: ["CSDL3"],
             path: ".",
             exclude: [
                 "README.md",
@@ -28,7 +36,7 @@ let package = Package(
             ],
             sources: [
                 "main.swift",
-                "SDL2Game.swift",
+                "SDL3Game.swift",
                 "TetrisEngine.swift",
                 "GameBoard.swift",
                 "Tetromino.swift",
@@ -36,8 +44,13 @@ let package = Package(
                 "TetrisMusic.swift"
             ],
             linkerSettings: [
-                .linkedLibrary("SDL2"),
-                .linkedLibrary("SDL2_ttf")
+                // Try to link directly to DLL if .lib not available
+                .unsafeFlags(["-L", "."], .when(configuration: .debug)),
+                .unsafeFlags(["-L", "."], .when(configuration: .release)),
+                .linkedLibrary("SDL3"),
+                // Note: SDL3_ttf.lib will be needed for text rendering
+                // Generate it from SDL3_ttf.dll using: .\create_sdl3_ttf_lib.ps1
+                .linkedLibrary("SDL3_ttf")
             ]
         )
     ]
