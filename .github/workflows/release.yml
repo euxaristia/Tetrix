@@ -15,7 +15,6 @@ permissions:
 jobs:
   release:
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       matrix:
         os: [ubuntu-22.04, macos-latest, windows-latest]

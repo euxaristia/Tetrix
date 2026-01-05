@@ -256,6 +256,8 @@ class SDL3Game {
     private func handleKeyPress(_ keyEvent: UnsafePointer<SDL_KeyboardEvent>) {
         // SDL3: Use scancode field (SDL_Scancode enum) instead of raw
         let scancode = keyEvent.pointee.scancode
+        let isRepeat = keyEvent.pointee.repeat
+        
         switch scancode {
         case SDL_SCANCODE_A, SDL_SCANCODE_LEFT:
             engine.moveLeft()
@@ -272,19 +274,29 @@ class SDL3Game {
         case SDL_SCANCODE_SPACE:
             engine.hardDrop()
         case SDL_SCANCODE_P:
-            engine.pause()
+            // Ignore key repeat for pause toggle
+            if !isRepeat {
+                engine.pause()
+            }
         case SDL_SCANCODE_R:
             if engine.gameState == .gameOver {
                 engine.reset()
             }
         case SDL_SCANCODE_F11:
-            toggleFullscreen()
+            // Ignore key repeat for fullscreen toggle
+            if !isRepeat {
+                toggleFullscreen()
+            }
         case SDL_SCANCODE_ESCAPE:
-            if isFullscreen {
+            // Ignore key repeat for fullscreen toggle
+            if !isRepeat && isFullscreen {
                 toggleFullscreen()
             }
         case SDL_SCANCODE_M:
-            toggleMusic()
+            // Ignore key repeat for music toggle - only toggle on initial press
+            if !isRepeat {
+                toggleMusic()
+            }
         default:
             break
         }
