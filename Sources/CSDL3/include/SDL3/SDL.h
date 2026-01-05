@@ -13,6 +13,7 @@
 #include <SDL3/SDL_assert.h>
 #include <SDL3/SDL_endian.h>
 #include <SDL3/SDL_properties.h>
+#include <SDL3/SDL_iostream.h>
 
 // Video and rendering
 #include <SDL3/SDL_blendmode.h>

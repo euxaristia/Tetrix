@@ -29,30 +29,6 @@ typedef enum SDL_BlendMode
 } SDL_BlendMode;
 
 /**
- * Compose a custom blend mode for renderers.
- *
- * \param srcColorFactor the source color factor
- * \param dstColorFactor the destination color factor
- * \param colorOperation the color operation
- * \param srcAlphaFactor the source alpha factor
- * \param dstAlphaFactor the destination alpha factor
- * \param alphaOperation the alpha operation
- * \returns an SDL_BlendMode that represents the chosen factors and operations,
- *          or SDL_BLENDMODE_INVALID if there's an error
- *
- * \threadsafety It is safe to call this function from any thread.
- *
- * \since This function is available since SDL 3.0.0.
- */
-extern SDL_DECLSPEC SDL_BlendMode SDLCALL SDL_ComposeCustomBlendMode(
-    SDL_BlendFactor srcColorFactor,
-    SDL_BlendFactor dstColorFactor,
-    SDL_BlendOperation colorOperation,
-    SDL_BlendFactor srcAlphaFactor,
-    SDL_BlendFactor dstAlphaFactor,
-    SDL_BlendOperation alphaOperation);
-
-/**
  * Blend factors.
  *
  * \since This enum is available since SDL 3.0.0.
@@ -84,6 +60,30 @@ typedef enum SDL_BlendOperation
     SDL_BLENDOPERATION_MINIMUM = 0x4,  /**< min(destination, source) */
     SDL_BLENDOPERATION_MAXIMUM = 0x5   /**< max(destination, source) */
 } SDL_BlendOperation;
+
+/**
+ * Compose a custom blend mode for renderers.
+ *
+ * \param srcColorFactor the source color factor
+ * \param dstColorFactor the destination color factor
+ * \param colorOperation the color operation
+ * \param srcAlphaFactor the source alpha factor
+ * \param dstAlphaFactor the destination alpha factor
+ * \param alphaOperation the alpha operation
+ * \returns an SDL_BlendMode that represents the chosen factors and operations,
+ *          or SDL_BLENDMODE_INVALID if there's an error
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ */
+extern SDL_DECLSPEC SDL_BlendMode SDLCALL SDL_ComposeCustomBlendMode(
+    SDL_BlendFactor srcColorFactor,
+    SDL_BlendFactor dstColorFactor,
+    SDL_BlendOperation colorOperation,
+    SDL_BlendFactor srcAlphaFactor,
+    SDL_BlendFactor dstAlphaFactor,
+    SDL_BlendOperation alphaOperation);
 
 #ifdef __cplusplus
 }
