@@ -112,21 +112,53 @@ jobs:
         cd build
         cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF
         cmake --build . --config Release
-        # Install to a local directory
-        $sdl3InstallPath = "$PSScriptRoot\sdl3-static"
-        New-Item -ItemType Directory -Force -Path $sdl3InstallPath | Out-Null
-        cmake --install . --config Release --prefix $sdl3InstallPath
-        # Copy static libraries to project root and rename to standard names
-        $sdl3Lib = Get-ChildItem "$sdl3InstallPath\lib\*.lib" | Where-Object { $_.Name -match "SDL3" -and $_.Name -notmatch "SDL3_ttf" } | Select-Object -First 1
+        # Try to find the library in build output (Visual Studio puts it in Release/ subdirectory)
+        $sdl3Lib = $null
+        # First, try to find in the build output directory
+        $buildOutputDirs = @("Release", "Release\lib", "lib", ".")
+        foreach ($dir in $buildOutputDirs) {
+          $searchPath = Join-Path $PWD $dir
+          if (Test-Path $searchPath) {
+            $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+            if ($found) {
+              $sdl3Lib = $found
+              Write-Host "Found SDL3 library in build output: $($found.FullName)"
+              break
+            }
+          }
+        }
+        # If not found in build output, try install (but don't fail if it fails)
+        if (-not $sdl3Lib) {
+          $sdl3InstallPath = "$env:TEMP\sdl3-static"
+          New-Item -ItemType Directory -Force -Path $sdl3InstallPath | Out-Null
+          cmake --install . --config Release --prefix $sdl3InstallPath 2>&1 | Out-Null
+          if (Test-Path "$sdl3InstallPath\lib") {
+            $sdl3Lib = Get-ChildItem "$sdl3InstallPath\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" } | Select-Object -First 1
+          }
+        }
+        # Copy to project root with standard name
         if ($sdl3Lib) {
           Copy-Item $sdl3Lib.FullName "$env:GITHUB_WORKSPACE\SDL3.lib" -Force
           Write-Host "Copied and renamed $($sdl3Lib.Name) to SDL3.lib"
         } else {
-          Write-Host "Warning: SDL3 static library not found"
+          Write-Host "Error: SDL3 static library not found after build"
+          Write-Host "Searching in: $PWD"
+          Get-ChildItem -Recurse -Filter "*.lib" | Select-Object FullName | ForEach-Object { Write-Host "Found lib: $($_.FullName)" }
+          exit 1
         }
-        # Copy headers
+        # Copy headers (try install path first, then source directory)
         New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\sdl3-headers" | Out-Null
-        Copy-Item "$sdl3InstallPath\include\SDL3\*" "$env:GITHUB_WORKSPACE\sdl3-headers\" -Recurse -ErrorAction SilentlyContinue
+        $headerSource = "$sdl3InstallPath\include\SDL3"
+        if (-not (Test-Path $headerSource)) {
+          # Try source directory
+          $headerSource = "$env:TEMP\sdl3-static-build\include\SDL3"
+        }
+        if (Test-Path $headerSource) {
+          Copy-Item "$headerSource\*" "$env:GITHUB_WORKSPACE\sdl3-headers\" -Recurse -ErrorAction SilentlyContinue
+          Write-Host "Copied SDL3 headers from $headerSource"
+        } else {
+          Write-Host "Warning: SDL3 headers not found"
+        }
         Write-Host "SDL3 static library built and installed"
     
     - name: Build SDL3_ttf Static (Windows)
@@ -144,17 +176,39 @@ jobs:
         # SDL3_ttf will find freetype automatically or we can let CMake download it
         cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DSDL3TTF_SHARED=OFF -DSDL3TTF_STATIC=ON -DSDL3_DIR="$sdl3BuildPath"
         cmake --build . --config Release
-        # Install to a local directory
-        $sdl3ttfInstallPath = "$PSScriptRoot\sdl3-ttf-static"
-        New-Item -ItemType Directory -Force -Path $sdl3ttfInstallPath | Out-Null
-        cmake --install . --config Release --prefix $sdl3ttfInstallPath
-        # Copy static libraries to project root and rename to standard names
-        $sdl3ttfLib = Get-ChildItem "$sdl3ttfInstallPath\lib\*.lib" | Where-Object { $_.Name -match "SDL3_ttf" } | Select-Object -First 1
+        # Try to find the library in build output (Visual Studio puts it in Release/ subdirectory)
+        $sdl3ttfLib = $null
+        # First, try to find in the build output directory
+        $buildOutputDirs = @("Release", "Release\lib", "lib", ".")
+        foreach ($dir in $buildOutputDirs) {
+          $searchPath = Join-Path $PWD $dir
+          if (Test-Path $searchPath) {
+            $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+            if ($found) {
+              $sdl3ttfLib = $found
+              Write-Host "Found SDL3_ttf library in build output: $($found.FullName)"
+              break
+            }
+          }
+        }
+        # If not found in build output, try install (but don't fail if it fails)
+        if (-not $sdl3ttfLib) {
+          $sdl3ttfInstallPath = "$env:TEMP\sdl3-ttf-static"
+          New-Item -ItemType Directory -Force -Path $sdl3ttfInstallPath | Out-Null
+          cmake --install . --config Release --prefix $sdl3ttfInstallPath 2>&1 | Out-Null
+          if (Test-Path "$sdl3ttfInstallPath\lib") {
+            $sdl3ttfLib = Get-ChildItem "$sdl3ttfInstallPath\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "SDL3_ttf" } | Select-Object -First 1
+          }
+        }
+        # Copy to project root with standard name
         if ($sdl3ttfLib) {
           Copy-Item $sdl3ttfLib.FullName "$env:GITHUB_WORKSPACE\SDL3_ttf.lib" -Force
           Write-Host "Copied and renamed $($sdl3ttfLib.Name) to SDL3_ttf.lib"
         } else {
-          Write-Host "Warning: SDL3_ttf static library not found"
+          Write-Host "Error: SDL3_ttf static library not found after build"
+          Write-Host "Searching in: $PWD"
+          Get-ChildItem -Recurse -Filter "*.lib" | Select-Object FullName | ForEach-Object { Write-Host "Found lib: $($_.FullName)" }
+          exit 1
         }
         Write-Host "SDL3_ttf static library built and installed"
     

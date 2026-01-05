@@ -146,6 +146,9 @@ class SDL3Game {
         // Now show the window after first frame is rendered
         SDL_ShowWindow(window)
         
+        // Always maximize the window on startup
+        _ = SDL_MaximizeWindow(window)
+        
         // Start playing the classic Tetris theme if music is enabled
         if musicEnabled {
             music?.start()
