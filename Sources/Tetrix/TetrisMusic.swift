@@ -1,11 +1,4 @@
 import Foundation
-#if os(Linux)
-import Glibc
-#elseif os(Windows)
-import WinSDK
-#else
-import Darwin
-#endif
 import CSDL3
 
 class TetrisMusic {
@@ -90,12 +83,8 @@ class TetrisMusic {
         audioStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nil, nil)
         
         if audioStream == nil {
-            if let error = SDL_GetError() {
-                let errorString = String(cString: error)
-                print("Warning: Failed to open audio device: \(errorString)")
-            } else {
-                print("Warning: Failed to open audio device (unknown error)")
-            }
+            let errorString = String.sdlError() ?? "Unknown error"
+            print("Warning: Failed to open audio device: \(errorString)")
             return
         }
         

@@ -1,16 +1,5 @@
 import Foundation
-#if os(Linux)
-import Glibc
-#elseif os(Windows)
-import WinSDK
-#else
-import Darwin
-#endif
 import CSDL3
-
-#if os(Windows)
-// strlen is in string.h which should be available via WinSDK, but let's make sure
-#endif
 
 class SDL3Game {
     private var window: OpaquePointer?
@@ -63,14 +52,11 @@ class SDL3Game {
         windowWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding (20 on each side)
         windowHeight = boardPixelHeight + 40 // 40 for padding (20 on top and bottom)
         
-        // SDL3: SDL_Init returns Bool (true = success, false = failure)
-        if !SDL_Init(UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMEPAD) | UInt32(SDL_INIT_AUDIO)) {
-            if let error = SDL_GetError() {
-                let errorString = String(cString: error)
-                print("SDL_Init failed: \(errorString)")
-            } else {
-                print("SDL_Init failed (unknown error)")
-            }
+        // Initialize SDL subsystems
+        let initFlags = UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMEPAD) | UInt32(SDL_INIT_AUDIO)
+        let sdlResult = SDLHelper.initialize(initFlags)
+        if !sdlResult.isSuccess {
+            print("SDL_Init failed: \(sdlResult.errorMessage ?? "Unknown error")")
             return
         }
         
@@ -81,21 +67,14 @@ class SDL3Game {
         detectGamepad()
         
         // Initialize TTF for text rendering
-        if !TTF_Init() {
-            if let error = SDL_GetError() {
-                let errorString = String(cString: error)
-                print("Warning: TTF_Init failed: \(errorString), text rendering disabled")
-            } else {
-                print("Warning: TTF_Init failed, text rendering disabled")
-            }
+        let ttfResult = SDLHelper.initializeTTF()
+        if !ttfResult.isSuccess {
+            print("Warning: TTF_Init failed: \(ttfResult.errorMessage ?? "Unknown error"), text rendering disabled")
         }
         
+        // Create window
         let title = "Tetrix"
-        // SDL3: SDL_CreateWindow(title, width, height, flags)
-        title.withCString { cString in
-            // SDL3: Use SDL_WINDOW_HIDDEN (0x8) and SDL_WINDOW_RESIZABLE (0x20) flags
-            window = SDL_CreateWindow(cString, windowWidth, windowHeight, 0x28)  // SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
-        }
+        window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: 0x28)  // SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE (UInt64)
         if window == nil {
             print("Failed to create window")
         }
@@ -110,21 +89,21 @@ class SDL3Game {
         // On Windows, try common font paths
         #if os(Windows)
         // Try Windows font paths
-        font = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 20)
+        font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\arial.ttf", pointSize: 20.0)
         if font == nil {
-            font = TTF_OpenFont("C:\\Windows\\Fonts\\calibri.ttf", 20)
+            font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\calibri.ttf", pointSize: 20.0)
         }
         if font == nil {
-            font = TTF_OpenFont("C:\\Windows\\Fonts\\verdana.ttf", 20)
+            font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\verdana.ttf", pointSize: 20.0)
         }
         #else
         // Try Linux font paths
-        font = TTF_OpenFont("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf", 20)
+        font = TTFHelper.openFont(path: "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf", pointSize: 20.0)
         if font == nil {
-            font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+            font = TTFHelper.openFont(path: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", pointSize: 20.0)
         }
         if font == nil {
-            font = TTF_OpenFont("/usr/share/fonts/TTF/liberation/LiberationSans-Bold.ttf", 20)
+            font = TTFHelper.openFont(path: "/usr/share/fonts/TTF/liberation/LiberationSans-Bold.ttf", pointSize: 20.0)
         }
         #endif
         // If no font found, we'll render without text (just colors)
@@ -281,7 +260,7 @@ class SDL3Game {
                 // Stop music when window loses focus
                 music?.stop()
             case UInt32(SDL_EVENT_WINDOW_FOCUS_GAINED.rawValue):
-                // Window regained focus - game stays paused, user can press P to resume
+                // Window regained focus - game stays paused, user can press ESC to resume
                 // Music will resume when user manually unpauses if music is enabled
                 break
             default:
@@ -307,8 +286,10 @@ class SDL3Game {
                     if gamepad != nil {
                         let name = SDL_GetGamepadName(gamepad)
                         if name != nil {
-                            let nameString = String(cString: name!)
-                            print("Gamepad connected: \(nameString)")
+                            if let name = name {
+                                let nameString = String(cString: name)
+                                print("Gamepad connected: \(nameString)")
+                            }
                         }
                         break
                     }
@@ -356,7 +337,7 @@ class SDL3Game {
             engine.rotate()
         case SDL_SCANCODE_SPACE:
             engine.hardDrop()
-        case SDL_SCANCODE_P:
+        case SDL_SCANCODE_ESCAPE:
             // Ignore key repeat for pause toggle
             if !isRepeat {
                 engine.pause()
@@ -745,7 +726,7 @@ class SDL3Game {
             if usingController && gamepad != nil {
                 drawText(x: panelX, y: panelY + 330, text: "Press Options", r: 200, g: 200, b: 200)
             } else {
-                drawText(x: panelX, y: panelY + 330, text: "Press P", r: 200, g: 200, b: 200)
+                drawText(x: panelX, y: panelY + 330, text: "Press ESC", r: 200, g: 200, b: 200)
             }
         }
         
@@ -794,7 +775,7 @@ class SDL3Game {
             // Keyboard controls
             drawText(x: panelX, y: controlsStartY + 20, text: "WASD/Arrows", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 40, text: "Space: Drop", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 60, text: "P: Pause", r: 130, g: 130, b: 130)
+                drawText(x: panelX, y: controlsStartY + 60, text: "ESC: Pause", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "F11: Fullscreen", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 100, text: "M: Music", r: 130, g: 130, b: 130)
         }
@@ -851,29 +832,25 @@ class SDL3Game {
         }
         
         let color = SDL_Color(r: r, g: g, b: b, a: 255)
-        // SDL3: TTF_RenderText_Solid now requires length parameter
-        text.withCString { cString in
-            let length = strlen(cString)
-            let surface = TTF_RenderText_Solid(font, cString, length, color)
-            guard surface != nil else {
-                return
-            }
-            
-            let texture = SDL_CreateTextureFromSurface(renderer, surface)
-            SDL_DestroySurface(surface)
-            
-            guard texture != nil else {
-                return
-            }
-            
-            var destRect = SDL_FRect()
-            // SDL3: Use SDL_GetTextureSize instead of SDL_QueryTexture
-            SDL_GetTextureSize(texture, &destRect.w, &destRect.h)
-            destRect.x = Float(x)
-            destRect.y = Float(y)
-            
-            SDL_RenderTexture(renderer, texture, nil, &destRect)
-            SDL_DestroyTexture(texture)
+        // Render text using Swift helper
+        guard let surface = TTFHelper.renderText(font: font, text: text, color: color) else {
+            return
         }
+        
+        let texture = SDL_CreateTextureFromSurface(renderer, surface)
+        SDL_DestroySurface(surface)
+        
+        guard texture != nil else {
+            return
+        }
+        
+        var destRect = SDL_FRect()
+        // SDL3: Use SDL_GetTextureSize instead of SDL_QueryTexture
+        SDL_GetTextureSize(texture, &destRect.w, &destRect.h)
+        destRect.x = Float(x)
+        destRect.y = Float(y)
+        
+        SDL_RenderTexture(renderer, texture, nil, &destRect)
+        SDL_DestroyTexture(texture)
     }
 }

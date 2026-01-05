@@ -1,7 +1,2 @@
-# Mark SDL3 headers as vendored dependencies to exclude from language statistics
-Sources/CSDL3/include/** linguist-vendored
-Sources/CSDL3/include/** -diff
-Sources/CSDL3/include/** -merge
-
 # Mark module map as generated
 Sources/CSDL3/module.modulemap linguist-generated

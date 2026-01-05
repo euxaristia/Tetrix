@@ -23,7 +23,7 @@ A complete Tetris game implementation written from scratch in Swift using SDL3. 
 - **S / Down Arrow (↓)**: Soft drop (move down faster)
 - **W / Up Arrow (↑)**: Rotate piece clockwise
 - **Space**: Hard drop (instantly drop to bottom)
-- **P**: Pause/Resume the game
+- **ESC**: Pause/Resume the game
 - **Q**: Quit
 - **R**: Restart (when game over)
 
