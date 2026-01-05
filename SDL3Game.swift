@@ -220,6 +220,10 @@ class SDL3Game {
             case UInt32(SDL_EVENT_QUIT.rawValue):
                 running = false
             case UInt32(SDL_EVENT_KEY_DOWN.rawValue):
+                if !usingController {
+                    // Only show cursor when keyboard is first used
+                    _ = SDL_ShowCursor()
+                }
                 usingController = false
                 handleKeyPress(&event.key)
             case UInt32(SDL_EVENT_GAMEPAD_ADDED.rawValue):
@@ -229,12 +233,29 @@ class SDL3Game {
                     SDL_CloseGamepad(gamepad)
                     gamepad = nil
                     usingController = false
+                    // Show cursor when gamepad is removed
+                    _ = SDL_ShowCursor()
                 }
             case UInt32(SDL_EVENT_GAMEPAD_BUTTON_DOWN.rawValue):
+                if !usingController {
+                    // Hide cursor when controller is first used
+                    _ = SDL_HideCursor()
+                }
                 usingController = true
                 handleGamepadButtonDown(UInt32(event.gbutton.button))
             case UInt32(SDL_EVENT_GAMEPAD_BUTTON_UP.rawValue):
                 handleGamepadButtonUp(UInt32(event.gbutton.button))
+            case UInt32(SDL_EVENT_WINDOW_FOCUS_LOST.rawValue):
+                // Auto-pause when window loses focus
+                if engine.gameState == .playing {
+                    engine.pause()
+                }
+                // Stop music when window loses focus
+                music?.stop()
+            case UInt32(SDL_EVENT_WINDOW_FOCUS_GAINED.rawValue):
+                // Window regained focus - game stays paused, user can press P to resume
+                // Music will resume when user manually unpauses if music is enabled
+                break
             default:
                 break
             }
@@ -293,6 +314,13 @@ class SDL3Game {
             // Ignore key repeat for pause toggle
             if !isRepeat {
                 engine.pause()
+                // Resume music if game was unpaused and music is enabled
+                if engine.gameState == .playing && musicEnabled {
+                    music?.start()
+                } else if engine.gameState == .paused {
+                    // Pause music when game is paused
+                    music?.stop()
+                }
             }
         case SDL_SCANCODE_R:
             if engine.gameState == .gameOver {
@@ -376,7 +404,14 @@ class SDL3Game {
             engine.rotate()
         case 6: // SDL_GAMEPAD_BUTTON_START (Options button on DualSense)
             engine.pause()
-        case 1: // SDL_GAMEPAD_BUTTON_B (Circle button on DualSense) - restart on game over
+            // Resume music if game was unpaused and music is enabled
+            if engine.gameState == .playing && musicEnabled {
+                music?.start()
+            } else if engine.gameState == .paused {
+                // Pause music when game is paused
+                music?.stop()
+            }
+        case 4: // SDL_GAMEPAD_BUTTON_BACK (Share button on DualSense) - restart on game over
             if engine.gameState == .gameOver {
                 engine.reset()
             }
@@ -435,37 +470,86 @@ class SDL3Game {
         // Draw placed blocks
         let cells = engine.board.getAllCells()
         let linesToClear = engine.linesToClear
-        let flashProgress: Double
+        var flashProgress: Double = 0.0
+        var fadeProgress: Double = 0.0
         
         if let startTime = engine.lineClearStartTime, !linesToClear.isEmpty {
             let elapsed = Date().timeIntervalSince(startTime)
-            flashProgress = min(elapsed / engine.lineClearFlashDuration, 1.0)
-        } else {
-            flashProgress = 0.0
-        }
-        
-        // Calculate flash alpha (oscillates between 0 and 255)
-        let flashAlpha: UInt8
-        if flashProgress > 0 && flashProgress <= 1.0 {
-            // Flash effect: oscillate with decreasing intensity
-            let oscillation = sin(flashProgress * Double.pi * 8) // Fast flash (8 cycles)
-            let intensity = 1.0 - flashProgress // Fade out
-            flashAlpha = UInt8(max(0, min(255, (oscillation * 0.5 + 0.5) * intensity * 255)))
-        } else {
-            flashAlpha = 255
+            // Flash phase (0 to lineClearFlashDuration)
+            if elapsed <= engine.lineClearFlashDuration {
+                flashProgress = min(elapsed / engine.lineClearFlashDuration, 1.0)
+            } else {
+                flashProgress = 1.0
+                // Fade phase (after flash phase)
+                let fadeStart = engine.lineClearFlashDuration
+                let fadeElapsed = elapsed - fadeStart
+                fadeProgress = min(fadeElapsed / engine.lineClearFadeDuration, 1.0)
+            }
         }
         
         for y in 0..<boardHeight {
-            let isFlashing = linesToClear.contains(y)
+            let isClearing = linesToClear.contains(y)
             for x in 0..<boardWidth {
                 if let type = cells[y][x] {
-                    if isFlashing && flashProgress > 0 {
-                        // Draw flashing white overlay
-                        let pixelX = boardX + Int32(x) * cellSize
-                        let pixelY = boardY + Int32(y) * cellSize
-                        var flashRect = SDL_FRect(x: Float(pixelX), y: Float(pixelY), w: Float(cellSize - 2), h: Float(cellSize - 2))
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, flashAlpha)
-                        SDL_RenderFillRect(renderer, &flashRect)
+                    let pixelX = boardX + Int32(x) * cellSize
+                    let pixelY = boardY + Int32(y) * cellSize
+                    
+                    if isClearing {
+                        // Calculate block fade alpha (for gradual vanish)
+                        let blockAlpha: UInt8
+                        if fadeProgress > 0 {
+                            // During fade phase: fade from 255 to 0
+                            blockAlpha = UInt8(max(0, min(255, (1.0 - fadeProgress) * 255)))
+                        } else {
+                            blockAlpha = 255
+                        }
+                        
+                        // Draw the block with fade alpha during fade phase
+                        if fadeProgress > 0 {
+                            drawBlockWithAlpha(x: x, y: y, type: type, boardX: boardX, boardY: boardY, alpha: blockAlpha)
+                        } else {
+                            // During flash phase: draw block normally
+                            drawBlock(x: x, y: y, type: type, boardX: boardX, boardY: boardY)
+                        }
+                        
+                        // Enhanced flash effect during flash phase
+                        if flashProgress > 0 && fadeProgress == 0 {
+                            // More dramatic flash: oscillating between bright yellow/white with increasing intensity
+                            let oscillation = sin(flashProgress * Double.pi * 10) // Faster oscillation (10 cycles)
+                            // Intensity increases then decreases for dramatic effect
+                            let intensityCurve = sin(flashProgress * Double.pi * 0.5) // Smooth intensity curve
+                            let baseIntensity = 0.7 + (intensityCurve * 0.3) // Oscillates between 0.7 and 1.0
+                            let flashIntensity = (oscillation * 0.5 + 0.5) * baseIntensity
+                            
+                            // Bright yellow-white flash with high alpha
+                            let flashAlpha = UInt8(max(0, min(255, flashIntensity * 255)))
+                            var flashRect = SDL_FRect(x: Float(pixelX), y: Float(pixelY), w: Float(cellSize - 2), h: Float(cellSize - 2))
+                            
+                            // Draw glow effect (multiple layers for fantastic look)
+                            // Outer glow (larger, more transparent)
+                            var glowRect = SDL_FRect(
+                                x: Float(pixelX) - 2,
+                                y: Float(pixelY) - 2,
+                                w: Float(cellSize + 2),
+                                h: Float(cellSize + 2)
+                            )
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 200, UInt8(flashAlpha / 3))
+                            SDL_RenderFillRect(renderer, &glowRect)
+                            
+                            // Inner glow (medium)
+                            glowRect = SDL_FRect(
+                                x: Float(pixelX) - 1,
+                                y: Float(pixelY) - 1,
+                                w: Float(cellSize),
+                                h: Float(cellSize)
+                            )
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 150, UInt8(flashAlpha / 2))
+                            SDL_RenderFillRect(renderer, &glowRect)
+                            
+                            // Core flash (bright yellow-white)
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 200, flashAlpha)
+                            SDL_RenderFillRect(renderer, &flashRect)
+                        }
                     } else {
                         // Normal block drawing
                         drawBlock(x: x, y: y, type: type, boardX: boardX, boardY: boardY)
@@ -563,12 +647,37 @@ class SDL3Game {
         // Game state
         if engine.gameState == .paused {
             drawText(x: panelX, y: panelY + 300, text: "PAUSED", r: 255, g: 255, b: 0)
-            drawText(x: panelX, y: panelY + 330, text: "Press P", r: 200, g: 200, b: 200)
+            if usingController && gamepad != nil {
+                drawText(x: panelX, y: panelY + 330, text: "Press Options", r: 200, g: 200, b: 200)
+            } else {
+                drawText(x: panelX, y: panelY + 330, text: "Press P", r: 200, g: 200, b: 200)
+            }
         }
         
         if engine.gameState == .gameOver {
-            drawText(x: boardX + boardPixelWidth / 2 - 80, y: boardY + boardPixelHeight / 2 - 40, text: "GAME OVER", r: 255, g: 0, b: 0)
-            drawText(x: boardX + boardPixelWidth / 2 - 60, y: boardY + boardPixelHeight / 2, text: "Press R", r: 200, g: 200, b: 200)
+            // Calculate box dimensions (wide enough for "Press Share" which is longest)
+            let boxWidth: Float = 200
+            let boxHeight: Float = 80
+            let boxX = Float(boardX + boardPixelWidth / 2) - boxWidth / 2
+            let boxY = Float(boardY + boardPixelHeight / 2) - boxHeight / 2 - 10
+            
+            // Draw background box with border
+            var boxRect = SDL_FRect(x: boxX - 4, y: boxY - 4, w: boxWidth + 8, h: boxHeight + 8)
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200) // Dark border
+            SDL_RenderFillRect(renderer, &boxRect)
+            
+            // Draw inner box
+            boxRect = SDL_FRect(x: boxX, y: boxY, w: boxWidth, h: boxHeight)
+            SDL_SetRenderDrawColor(renderer, 30, 30, 40, 240) // Dark background
+            SDL_RenderFillRect(renderer, &boxRect)
+            
+            // Draw game over text
+            drawText(x: Int32(boxX + boxWidth / 2 - 80), y: Int32(boxY + 15), text: "GAME OVER", r: 255, g: 0, b: 0)
+            if usingController && gamepad != nil {
+                drawText(x: Int32(boxX + boxWidth / 2 - 80), y: Int32(boxY + 50), text: "Press Share", r: 200, g: 200, b: 200)
+            } else {
+                drawText(x: Int32(boxX + boxWidth / 2 - 60), y: Int32(boxY + 50), text: "Press R", r: 200, g: 200, b: 200)
+            }
         }
         
         // Controls hint - switch between keyboard and controller
@@ -581,7 +690,8 @@ class SDL3Game {
             drawText(x: panelX, y: controlsStartY + 40, text: "D-Pad Dn: Drop", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 60, text: "Up/X: Rotate", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "Opt: Pause", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 100, text: "M: Music", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 100, text: "Share: Restart", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 120, text: "M: Music", r: 130, g: 130, b: 130)
         } else {
             // Keyboard controls
             drawText(x: panelX, y: controlsStartY + 20, text: "WASD/Arrows", r: 130, g: 130, b: 130)
@@ -595,16 +705,20 @@ class SDL3Game {
     }
     
     private func drawBlock(x: Int, y: Int, type: TetrominoType, boardX: Int32, boardY: Int32) {
+        drawBlockWithAlpha(x: x, y: y, type: type, boardX: boardX, boardY: boardY, alpha: 255)
+    }
+    
+    private func drawBlockWithAlpha(x: Int, y: Int, type: TetrominoType, boardX: Int32, boardY: Int32, alpha: UInt8) {
         let pixelX = boardX + Int32(x) * cellSize
         let pixelY = boardY + Int32(y) * cellSize
         var rect = SDL_FRect(x: Float(pixelX), y: Float(pixelY), w: Float(cellSize - 2), h: Float(cellSize - 2))
         
         let color = getColor(type.color)
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255)
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, alpha)
         SDL_RenderFillRect(renderer, &rect)
         
-        // Highlight border
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 100)
+        // Highlight border (also fade with alpha)
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, UInt8((UInt16(alpha) * 100) / 255))
         SDL_RenderRect(renderer, &rect)
     }
     

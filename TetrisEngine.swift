@@ -19,8 +19,11 @@ class TetrisEngine {
     // Line clearing animation state
     var linesToClear: [Int] = []
     var lineClearStartTime: Date?
-    let lineClearFlashDuration: TimeInterval = 0.3 // Flash for 0.3 seconds
-    let lineClearTotalDuration: TimeInterval = 0.5 // Total animation duration
+    let lineClearFlashDuration: TimeInterval = 0.35 // Flash phase duration
+    let lineClearFadeDuration: TimeInterval = 0.25 // Fade-out phase duration
+    var lineClearTotalDuration: TimeInterval {
+        return lineClearFlashDuration + lineClearFadeDuration // Total animation duration
+    }
     
     private var lastDropTime: Date = Date()
     private var dropInterval: TimeInterval {

@@ -51,7 +51,7 @@ jobs:
         sudo apt-get install -y build-essential cmake libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libwayland-dev libdbus-1-dev libpipewire-0.3-dev libpulse-dev libasound2-dev git
         # Build SDL3 from source
         cd /tmp
-        git clone --depth 1 --branch SDL3 https://github.com/libsdl-org/SDL.git sdl3-build
+        git clone --depth 1 https://github.com/libsdl-org/SDL.git sdl3-build
         cd sdl3-build
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF
@@ -59,7 +59,7 @@ jobs:
         sudo cmake --install .
         # Build SDL3_ttf from source
         cd /tmp
-        git clone --depth 1 --branch SDL3 https://github.com/libsdl-org/SDL_ttf.git sdl3-ttf-build
+        git clone --depth 1 https://github.com/libsdl-org/SDL_ttf.git sdl3-ttf-build
         cd sdl3-ttf-build
         mkdir build && cd build
         cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL3TTF_SHARED=ON -DSDL3TTF_STATIC=OFF
