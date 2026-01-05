@@ -303,18 +303,25 @@ jobs:
             
             # Replace SDL3_FOUND=FALSE with TRUE (case-insensitive, handle various formats)
             $originalContent = $configContent
+            # Try multiple patterns to catch all variations
             $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+FALSE\s*\)", "set(SDL3_FOUND TRUE)"
             $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+OFF\s*\)", "set(SDL3_FOUND TRUE)"
+            $configContent = $configContent -replace "(?i)SDL3_FOUND\s*=\s*FALSE", "SDL3_FOUND TRUE"
+            $configContent = $configContent -replace "(?i)SDL3_FOUND\s*=\s*OFF", "SDL3_FOUND TRUE"
             
             # Also try to find and replace any conditional that sets SDL3_FOUND
             $configContent = $configContent -replace "(?i)(if\s*\([^)]*\)\s*set\s*\(\s*SDL3_FOUND\s+)FALSE", "`${1}TRUE"
+            $configContent = $configContent -replace "(?i)(if\s*\([^)]*\)\s*set\s*\(\s*SDL3_FOUND\s+)OFF", "`${1}TRUE"
             
-            # If no replacement happened, append at the end
-            if ($configContent -eq $originalContent) {
-              Write-Host "  No SDL3_FOUND found, appending to end of file"
-              $configContent = $configContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`nset(SDL3_FOUND TRUE)`n"
-            } else {
-              Write-Host "  Replaced SDL3_FOUND=FALSE/OFF with TRUE"
+            # Remove any existing SDL3_FOUND=TRUE at the end (we'll add a fresh one)
+            $configContent = $configContent -replace "(?s)(.*)# Force SDL3_FOUND=TRUE.*?set\(SDL3_FOUND TRUE\).*", '$1'
+            
+            # Always append SDL3_FOUND=TRUE at the very end to override any conditional logic
+            Write-Host "  Appending SDL3_FOUND=TRUE at end of file to override any conditional logic"
+            $configContent = $configContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`n# This must be at the end to override any conditional checks`nset(SDL3_FOUND TRUE)`nset(SDL3_FOUND TRUE CACHE BOOL \"Force SDL3_FOUND to TRUE\")`n"
+            
+            if ($configContent -ne $originalContent) {
+              Write-Host "  Made replacements in file content"
             }
             
             # Write the patched content
@@ -433,6 +440,20 @@ jobs:
         }
         # Also set the target name that SDL3_ttf might be looking for
         $cmakeArgs += "-DSDL3_LIBRARIES=$installLibPath"
+        
+        # Final patch pass - ensure SDL3Config.cmake is patched right before CMake runs
+        Write-Host "Final patch pass before CMake runs..."
+        $finalConfigPath = "$env:TEMP\sdl3-static\cmake\SDL3\SDL3Config.cmake"
+        if (Test-Path $finalConfigPath) {
+          Write-Host "Patching final config file: $finalConfigPath"
+          $finalContent = [System.IO.File]::ReadAllText($finalConfigPath)
+          # Remove any existing patch comments and add fresh one
+          $finalContent = $finalContent -replace "(?s)# Force SDL3_FOUND=TRUE.*?set\(SDL3_FOUND TRUE.*?\)`n", ""
+          $finalContent = $finalContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (final patch before CMake)`nset(SDL3_FOUND TRUE)`nset(SDL3_FOUND TRUE CACHE BOOL \"Force SDL3_FOUND to TRUE\") FORCE`n"
+          [System.IO.File]::WriteAllText($finalConfigPath, $finalContent)
+          Write-Host "Final patch applied"
+        }
+        
         Write-Host "Running CMake with args: $($cmakeArgs -join ' ')"
         & cmake $cmakeArgs
         cmake --build . --config Release
