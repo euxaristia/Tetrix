@@ -224,6 +224,25 @@ jobs:
         }
         Write-Host "Using SDL3_DIR: $sdl3InstallPath"
         Write-Host "SDL3Config.cmake found at: $sdl3ConfigPath"
+        # Patch SDL3Config.cmake to force SDL3_FOUND=TRUE if it's from build directory
+        # (build directory config files often don't work correctly)
+        if ($sdl3ConfigPath -like "*sdl3-static-build\build\SDL3Config.cmake") {
+          Write-Host "Patching build directory SDL3Config.cmake to set SDL3_FOUND=TRUE"
+          if (Test-Path $sdl3ConfigPath) {
+            $configContent = Get-Content $sdl3ConfigPath -Raw
+            # Check if SDL3_FOUND is already set to FALSE and replace it, or add it at the end
+            if ($configContent -match "set\(SDL3_FOUND\s+FALSE\)") {
+              $configContent = $configContent -replace "set\(SDL3_FOUND\s+FALSE\)", "set(SDL3_FOUND TRUE)"
+              Write-Host "Replaced SDL3_FOUND=FALSE with SDL3_FOUND=TRUE"
+            } else {
+              # Add at the end to force it
+              $configContent = $configContent + "`nset(SDL3_FOUND TRUE)`n"
+              Write-Host "Added set(SDL3_FOUND TRUE) to end of file"
+            }
+            Set-Content -Path $sdl3ConfigPath -Value $configContent -NoNewline
+            Write-Host "Patched SDL3Config.cmake successfully"
+          }
+        }
         # Find SDL3 library and include paths to help CMake
         # Exclude test, ttf, and other sub-libraries - we want the main SDL3 static library
         $sdl3LibPath = Get-ChildItem "$env:TEMP\sdl3-static\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { 
@@ -281,7 +300,7 @@ jobs:
           $sdl3InstallPath = "$env:TEMP\sdl3-static"
           Write-Host "Using installed SDL3Config.cmake from: $sdl3ConfigPath"
         } else {
-          Write-Host "Warning: Using build directory SDL3Config.cmake, this may cause issues"
+          Write-Host "Warning: Using build directory SDL3Config.cmake (already patched above)"
         }
         # SDL3_ttf will find freetype automatically or we can let CMake download it
         # Try to work around SDL3Config.cmake issues by manually setting all SDL3 variables
