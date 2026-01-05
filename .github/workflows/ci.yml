@@ -257,60 +257,81 @@ jobs:
             Write-Host "Copied library to install directory: $installLibPath"
           }
         }
-        # Patch SDL3Config.cmake to force SDL3_FOUND=TRUE
-        # Both build directory and install directory config files may have issues
+        # Find and patch ALL SDL3Config.cmake files in the install directory
+        # SDL3 installs config files in multiple locations
+        $configFilesToPatch = @()
         if (Test-Path $sdl3ConfigPath) {
-          Write-Host "Patching SDL3Config.cmake to set SDL3_FOUND=TRUE"
-          # Read the entire file as a single string
-          $configContent = [System.IO.File]::ReadAllText($sdl3ConfigPath)
-          Write-Host "Original file size: $($configContent.Length) bytes"
-          
-          # Replace SDL3_FOUND=FALSE with TRUE (case-insensitive, handle various formats)
-          $originalContent = $configContent
-          $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+FALSE\s*\)", "set(SDL3_FOUND TRUE)"
-          $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+OFF\s*\)", "set(SDL3_FOUND TRUE)"
-          
-          # If no replacement happened, append at the end
-          if ($configContent -eq $originalContent) {
-            Write-Host "No SDL3_FOUND found, appending to end of file"
-            $configContent = $configContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`nset(SDL3_FOUND TRUE)`n"
-          } else {
-            Write-Host "Replaced SDL3_FOUND=FALSE/OFF with TRUE"
-          }
-          
-          # Write the patched content
-          [System.IO.File]::WriteAllText($sdl3ConfigPath, $configContent)
-          Write-Host "Patched SDL3Config.cmake successfully"
-          
-          # Verify the patch
-          $verifyContent = [System.IO.File]::ReadAllText($sdl3ConfigPath)
-          if ($verifyContent -match "(?i)set\s*\(\s*SDL3_FOUND\s+TRUE\s*\)") {
-            Write-Host "Verification: SDL3_FOUND=TRUE found in patched file"
-          } else {
-            Write-Host "Warning: Verification failed - SDL3_FOUND=TRUE not found after patching"
-            Write-Host "First 500 chars of patched file:"
-            Write-Host $verifyContent.Substring(0, [Math]::Min(500, $verifyContent.Length))
-          }
-        } else {
-          Write-Host "Error: SDL3Config.cmake not found at $sdl3ConfigPath"
+          $configFilesToPatch += $sdl3ConfigPath
         }
-        
-        # Also check for and patch any SDL3Config.cmake in alternative locations
-        $altConfigPaths = @(
+        # Check all possible locations
+        $possibleConfigPaths = @(
           "$env:TEMP\sdl3-static\cmake\SDL3\SDL3Config.cmake",
-          "$env:TEMP\sdl3-static\lib\cmake\SDL3\SDL3Config.cmake"
+          "$env:TEMP\sdl3-static\lib\cmake\SDL3\SDL3Config.cmake",
+          "$env:TEMP\sdl3-static-build\build\SDL3Config.cmake",
+          "$env:TEMP\sdl3-static-build\build\cmake\SDL3\SDL3Config.cmake"
         )
-        foreach ($altPath in $altConfigPaths) {
-          if (Test-Path $altPath) {
-            Write-Host "Also patching alternative SDL3Config.cmake at: $altPath"
-            $altContent = [System.IO.File]::ReadAllText($altPath)
-            $altContent = $altContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+FALSE\s*\)", "set(SDL3_FOUND TRUE)"
-            $altContent = $altContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+OFF\s*\)", "set(SDL3_FOUND TRUE)"
-            if (-not ($altContent -match "(?i)set\s*\(\s*SDL3_FOUND\s+TRUE\s*\)")) {
-              $altContent = $altContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`nset(SDL3_FOUND TRUE)`n"
+        foreach ($path in $possibleConfigPaths) {
+          if (Test-Path $path) {
+            if ($configFilesToPatch -notcontains $path) {
+              $configFilesToPatch += $path
             }
-            [System.IO.File]::WriteAllText($altPath, $altContent)
-            Write-Host "Patched alternative config file"
+          }
+        }
+        # Also search recursively for any SDL3Config.cmake files
+        if (Test-Path "$env:TEMP\sdl3-static") {
+          $foundConfigs = Get-ChildItem -Path "$env:TEMP\sdl3-static" -Recurse -Filter "SDL3Config.cmake" -ErrorAction SilentlyContinue
+          foreach ($found in $foundConfigs) {
+            if ($configFilesToPatch -notcontains $found.FullName) {
+              $configFilesToPatch += $found.FullName
+            }
+          }
+        }
+        Write-Host "Found $($configFilesToPatch.Count) SDL3Config.cmake file(s) to patch"
+        # Patch all found config files
+        foreach ($configFile in $configFilesToPatch) {
+          Write-Host "Patching SDL3Config.cmake at: $configFile"
+          try {
+            # Read the entire file as a single string
+            $configContent = [System.IO.File]::ReadAllText($configFile)
+            Write-Host "  Original file size: $($configContent.Length) bytes"
+            
+            # Check if already patched
+            if ($configContent -match "(?i)set\s*\(\s*SDL3_FOUND\s+TRUE\s*\)") {
+              Write-Host "  Already contains SDL3_FOUND=TRUE, skipping"
+              continue
+            }
+            
+            # Replace SDL3_FOUND=FALSE with TRUE (case-insensitive, handle various formats)
+            $originalContent = $configContent
+            $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+FALSE\s*\)", "set(SDL3_FOUND TRUE)"
+            $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+OFF\s*\)", "set(SDL3_FOUND TRUE)"
+            
+            # Also try to find and replace any conditional that sets SDL3_FOUND
+            $configContent = $configContent -replace "(?i)(if\s*\([^)]*\)\s*set\s*\(\s*SDL3_FOUND\s+)FALSE", "`${1}TRUE"
+            
+            # If no replacement happened, append at the end
+            if ($configContent -eq $originalContent) {
+              Write-Host "  No SDL3_FOUND found, appending to end of file"
+              $configContent = $configContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`nset(SDL3_FOUND TRUE)`n"
+            } else {
+              Write-Host "  Replaced SDL3_FOUND=FALSE/OFF with TRUE"
+            }
+            
+            # Write the patched content
+            [System.IO.File]::WriteAllText($configFile, $configContent)
+            Write-Host "  Patched successfully"
+            
+            # Verify the patch
+            $verifyContent = [System.IO.File]::ReadAllText($configFile)
+            if ($verifyContent -match "(?i)set\s*\(\s*SDL3_FOUND\s+TRUE\s*\)") {
+              Write-Host "  Verification: SDL3_FOUND=TRUE found in patched file"
+            } else {
+              Write-Host "  WARNING: Verification failed - SDL3_FOUND=TRUE not found after patching"
+              Write-Host "  First 1000 chars of patched file:"
+              Write-Host $verifyContent.Substring(0, [Math]::Min(1000, $verifyContent.Length))
+            }
+          } catch {
+            Write-Host "  ERROR patching file: $_"
           }
         }
         # Find SDL3 library and include paths to help CMake
