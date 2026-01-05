@@ -124,8 +124,10 @@ class SDL3Game {
         }
         #elseif os(macOS)
         // macOS: Initialize text renderer and set view
-        if let textRenderer = SwiftTextRenderer(), let swiftRenderer = renderer as? SwiftRenderer {
-            textRenderer.setView(swiftRenderer.view)
+        if let textRenderer = SwiftTextRenderer(), 
+           let swiftRenderer = renderer as? SwiftRenderer,
+           let view = swiftRenderer.view {
+            textRenderer.setView(view)
             self.textRenderer = textRenderer
         }
         #endif
