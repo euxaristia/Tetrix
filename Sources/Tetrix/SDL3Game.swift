@@ -73,14 +73,15 @@ class SDL3Game {
         
         // Create SDL3 window on Linux
         let title = "Tetrix"
-        window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: 0x28)
+        let windowFlags = WindowFlag.combine(.hidden, .resizable)
+        window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: windowFlags)
         if window == nil {
             print("Failed to create window")
             return
         }
         
         // Create SDL3 renderer on Linux
-        if let sdlRenderer = SDL_CreateRenderer(window, nil) {
+        if let sdlRenderer = SDLRenderHelper.create(window: window) {
             renderer = Renderer(sdlRenderer: sdlRenderer)
             
             // Initialize text renderer and set renderer
@@ -96,7 +97,8 @@ class SDL3Game {
         // Windows/macOS: Use Swift-native window/renderer (no SDL3 needed for graphics)
         let title = "Tetrix"
         // Create Swift-native window
-        swiftWindow = SwiftWindow(title: title, width: windowWidth, height: windowHeight, flags: 0x28)
+        let windowFlags = WindowFlag.combine(.hidden, .resizable)
+        swiftWindow = SwiftWindow(title: title, width: windowWidth, height: windowHeight, flags: windowFlags)
         if swiftWindow == nil {
             print("Failed to create window")
             return
@@ -151,7 +153,7 @@ class SDL3Game {
         #if os(Linux)
         // Linux: Use SDL3 logical presentation for sharp scaling
         if let sdlRenderer = renderer?.sdlHandle {
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: SDL_LOGICAL_PRESENTATION_LETTERBOX)
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
         }
         
         // Apply fullscreen state if it was saved
@@ -207,7 +209,11 @@ class SDL3Game {
         while running {
             let now = Date()
             
-            // Handle events
+            // Process ALL pending events immediately for responsive window controls (especially on Linux)
+            // This ensures the X button hover/click responses are instant
+            // Process events in a tight loop until queue is empty
+            handleEvents()
+            // Process again to catch any events that arrived during first processing
             handleEvents()
             
             // Handle held D-pad down for soft drop
@@ -221,7 +227,7 @@ class SDL3Game {
             
             // Show cursor when paused, even if controller is in use
             if engine.gameState == .paused {
-                _ = SDL_ShowCursor()
+                SDLCursorHelper.show()
             }
             
         // Update music (only if enabled)
@@ -244,8 +250,13 @@ class SDL3Game {
                 render()
                 lastFrameTime = now
             } else {
-                // Sleep a bit to not waste CPU
+                // Minimal sleep - just enough to yield CPU, but short enough to keep window responsive
+                // Window events (like X button hover) need to be processed frequently
                 PlatformHelper.sleep(milliseconds: 1)
+                
+                // After sleep, immediately process events again to catch any window events
+                // This prevents the lag when hovering over the X button
+                handleEvents()
             }
         }
     }
@@ -259,8 +270,19 @@ class SDL3Game {
     }
     
     private func handleEvents() {
+        // Pump events from OS into SDL's queue first - critical for window responsiveness on Linux
+        // This ensures window events (X button hover, clicks) are captured immediately
+        #if os(Linux)
+        SDLEventHelper.pumpEvents()
+        #endif
+        
         // Poll for events using Swift-native event system
+        // Process multiple events per call to ensure window responsiveness
+        var eventsProcessed = 0
         while let event = EventPoller.poll() {
+            eventsProcessed += 1
+            // Limit to prevent infinite loops, but process enough for responsiveness
+            if eventsProcessed > 100 { break }
             switch event {
             case .quit:
                 running = false
@@ -418,7 +440,7 @@ class SDL3Game {
         // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
         // This ensures consistent scaling whether windowed, resized, snapped, or maximized
         if let sdlRenderer = renderer.sdlHandle {
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: SDL_LOGICAL_PRESENTATION_LETTERBOX)
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
         }
         #else
         guard let window = swiftWindow else { return }

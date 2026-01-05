@@ -104,8 +104,48 @@ struct SDLHelper {
 
 // TTFHelper removed - using Swift-native text rendering in SwiftTextRenderer
 
+/// Swift-native window flags (replaces SDL_WINDOW_* constants)
+enum WindowFlag: UInt64 {
+    case hidden = 0x8
+    case resizable = 0x20
+    case fullscreen = 0x00000001
+    
+    static func combine(_ flags: WindowFlag...) -> UInt64 {
+        return flags.reduce(0) { $0 | $1.rawValue }
+    }
+}
+
+/// Swift-native logical presentation mode (replaces SDL_LOGICAL_PRESENTATION_* constants)
+enum LogicalPresentationMode {
+    case disabled
+    case letterbox
+    case overscan
+    case integerScale
+    case stretch
+    
+    func toSDL() -> SDL_RendererLogicalPresentation {
+        switch self {
+        case .disabled:
+            return SDL_LOGICAL_PRESENTATION_DISABLED
+        case .letterbox:
+            return SDL_LOGICAL_PRESENTATION_LETTERBOX
+        case .overscan:
+            return SDL_LOGICAL_PRESENTATION_OVERSCAN
+        case .integerScale:
+            return SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+        case .stretch:
+            return SDL_LOGICAL_PRESENTATION_STRETCH
+        }
+    }
+}
+
 /// Helper for SDL rendering operations
 struct SDLRenderHelper {
+    /// Create a renderer for a window
+    static func create(window: OpaquePointer?) -> OpaquePointer? {
+        return SDL_CreateRenderer(window, nil)
+    }
+    
     /// Set render draw color
     static func setDrawColor(renderer: OpaquePointer?, r: UInt8, g: UInt8, b: UInt8, a: UInt8 = 255) {
         SDL_SetRenderDrawColor(renderer, r, g, b, a)
@@ -146,7 +186,12 @@ struct SDLWindowHelper {
         return SDL_SetWindowFullscreen(window, fullscreen)
     }
     
-    /// Set render logical presentation
+    /// Set render logical presentation (uses Swift-native mode enum)
+    static func setLogicalPresentation(renderer: OpaquePointer?, width: Int32, height: Int32, mode: LogicalPresentationMode) -> Bool {
+        return SDL_SetRenderLogicalPresentation(renderer, width, height, mode.toSDL())
+    }
+    
+    /// Set render logical presentation (legacy C type version)
     static func setLogicalPresentation(renderer: OpaquePointer?, width: Int32, height: Int32, mode: SDL_RendererLogicalPresentation) -> Bool {
         return SDL_SetRenderLogicalPresentation(renderer, width, height, mode)
     }
@@ -177,6 +222,12 @@ struct SDLCursorHelper {
 
 /// Helper for SDL event operations
 struct SDLEventHelper {
+    /// Pump events from the OS into SDL's event queue
+    /// This ensures window events (like X button hover) are captured immediately
+    static func pumpEvents() {
+        SDL_PumpEvents()
+    }
+    
     /// Poll for events - returns true if an event was available
     static func pollEvent(_ event: inout SDL_Event) -> Bool {
         return SDL_PollEvent(&event)

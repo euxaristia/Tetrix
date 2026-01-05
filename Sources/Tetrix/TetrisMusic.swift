@@ -1,27 +1,47 @@
 import Foundation
 import CSDL3
 
+// MARK: - Swift-Native Audio Types (replaces SDL audio C types)
+
+/// Swift-native audio specification (replaces SDL_AudioSpec)
+struct AudioSpec {
+    var frequency: Int32
+    var format: UInt32
+    var channels: UInt8
+    
+    init(frequency: Int32, format: UInt32, channels: UInt8) {
+        self.frequency = frequency
+        self.format = format
+        self.channels = channels
+    }
+    
+    /// Convert to SDL_AudioSpec for C interop
+    func toSDL() -> SDL_AudioSpec {
+        var sdlSpec = SDL_AudioSpec()
+        sdlSpec.freq = frequency
+        sdlSpec.format = SDL_AudioFormat(rawValue: format) ?? SDL_AUDIO_S16
+        sdlSpec.channels = Int32(channels)
+        return sdlSpec
+    }
+}
+
 // MARK: - SDL Audio Wrapper (replaces direct SDL audio calls)
 
 /// Swift-native audio stream wrapper (replaces SDL_AudioStream)
 class AudioStream {
     private var sdlStream: OpaquePointer?
     
-    init?(device: UInt32, spec: inout SDL_AudioSpec, allowedChanges: UInt32, callback: UnsafeMutableRawPointer?) {
+    init?(device: UInt32, spec: AudioSpec, allowedChanges: UInt32 = 0, callback: UnsafeMutableRawPointer? = nil) {
+        var sdlSpec = spec.toSDL()
         // SDL_OpenAudioDeviceStream signature: (devid, spec, callback, userdata)
         // callback is SDL_AudioStreamCallback?, userdata is UnsafeMutableRawPointer?
         // We pass callback as nil and userdata as nil
         let callbackPtr: SDL_AudioStreamCallback? = nil
         let userdata: UnsafeMutableRawPointer? = nil
-        sdlStream = SDL_OpenAudioDeviceStream(device, &spec, callbackPtr, userdata)
+        sdlStream = SDL_OpenAudioDeviceStream(device, &sdlSpec, callbackPtr, userdata)
         if sdlStream == nil {
             return nil
         }
-    }
-    
-    // Convenience initializer without allowedChanges parameter
-    convenience init?(device: UInt32, spec: inout SDL_AudioSpec) {
-        self.init(device: device, spec: &spec, allowedChanges: 0, callback: nil)
     }
     
     func resume() {
@@ -55,7 +75,9 @@ class AudioStream {
 
 /// SDL audio constants (replaces SDL_* constants)
 enum AudioFormat {
-    static let s16 = SDL_AUDIO_S16
+    static var s16: UInt32 {
+        return UInt32(SDL_AUDIO_S16.rawValue)
+    }
 }
 
 enum AudioDevice {
@@ -134,14 +156,15 @@ class TetrisMusic {
     }
     
     private func setupAudio() {
-        var spec = SDL_AudioSpec()
-        spec.freq = Int32(sampleRate)
-        spec.format = AudioFormat.s16  // SDL3: 16-bit signed samples
-        spec.channels = 1  // Mono audio
+        let spec = AudioSpec(
+            frequency: Int32(sampleRate),
+            format: AudioFormat.s16,  // SDL3: 16-bit signed samples (UInt32)
+            channels: 1  // Mono audio
+        )
         
         // SDL3: Use Swift-native audio stream wrapper
         // Pass nil for callback - we'll queue data manually
-        audioStream = AudioStream(device: AudioDevice.defaultPlayback, spec: &spec)
+        audioStream = AudioStream(device: AudioDevice.defaultPlayback, spec: spec)
         
         if audioStream == nil {
             let errorString = String.sdlError() ?? "Unknown error"
