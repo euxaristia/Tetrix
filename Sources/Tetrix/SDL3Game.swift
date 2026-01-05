@@ -1,4 +1,7 @@
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 import CSDL3
 
 class SDL3Game {
@@ -62,10 +65,143 @@ class SDL3Game {
         // Initialize platform-specific subsystems
         #if os(Linux)
         // Linux: Use SDL3 (handles X11/Wayland automatically)
-        let sdlResult = SDLHelper.initialize(subsystems: .video, .gamepad, .audio)
-        if !sdlResult.isSuccess {
-            print("SDL_Init failed: \(sdlResult.errorMessage ?? "Unknown error")")
-            return
+        // Note: libdecor-gtk warnings are harmless - SDL will fall back to other backends
+        
+        // Check what's already initialized
+        let videoFlag: UInt32 = 0x00000020  // SDL_INIT_VIDEO
+        let gamepadFlag: UInt32 = 0x00002000  // SDL_INIT_GAMEPAD
+        let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
+        let eventsFlag: UInt32 = 0x00004000  // SDL_INIT_EVENTS
+        let allFlags: UInt32 = videoFlag | gamepadFlag | audioFlag
+        
+        let wasInit = SDL_WasInit(allFlags)
+        if wasInit != 0 {
+            print("Note: Some SDL subsystems already initialized (flags: 0x\(String(wasInit, radix: 16)))")
+        }
+        
+        // Prefer Wayland if available (avoid X11 symbol issues)
+        // Check if SDL_VIDEODRIVER is already set
+        let currentDriver = ProcessInfo.processInfo.environment["SDL_VIDEODRIVER"]
+        let waylandDisplay = ProcessInfo.processInfo.environment["WAYLAND_DISPLAY"]
+        let display = ProcessInfo.processInfo.environment["DISPLAY"]
+        
+        if currentDriver == nil && waylandDisplay != nil && !waylandDisplay!.isEmpty {
+            // Force Wayland driver if WAYLAND_DISPLAY is set and driver not already set
+            #if os(Linux)
+            setenv("SDL_VIDEODRIVER", "wayland", 0)
+            // Unset DISPLAY to prevent SDL from probing X11 (which has broken symbols)
+            // This helps avoid X11 library loading during dynamic linking
+            if display != nil {
+                unsetenv("DISPLAY")
+                print("Wayland detected (WAYLAND_DISPLAY=\(waylandDisplay!)), forcing SDL_VIDEODRIVER=wayland and unsetting DISPLAY to avoid X11")
+            } else {
+                print("Wayland detected (WAYLAND_DISPLAY=\(waylandDisplay!)), forcing SDL_VIDEODRIVER=wayland")
+            }
+            #endif
+        } else if currentDriver != nil {
+            print("Using SDL_VIDEODRIVER=\(currentDriver!)")
+        }
+        
+        // Clear any previous errors
+        SDL_ClearError()
+        
+        // Try initializing all subsystems at once (SDL3's preferred method)
+        let initResult = SDL_Init(allFlags)
+        
+        if initResult == 0 {
+            print("SDL subsystems initialized successfully")
+        } else {
+            // If that fails, try subsystems separately
+            print("SDL_Init failed with code \(initResult), trying subsystems separately...")
+            SDL_ClearError()
+            
+            // Events MUST be initialized first in SDL3 (video depends on it)
+            let eventsResult = SDL_InitSubSystem(eventsFlag)
+            if eventsResult == 0 {
+                print("SDL events subsystem initialized")
+            } else {
+                let errorMsg = String.sdlError() ?? "unknown error"
+                print("Warning: SDL events subsystem failed: \(errorMsg) (code: \(eventsResult))")
+            }
+            
+            // Try video (required) - but only if events succeeded
+            SDL_ClearError()
+            let videoResult: Int32
+            if eventsResult == 0 {
+                videoResult = SDL_InitSubSystem(videoFlag)
+            } else {
+                print("Skipping video init - events subsystem failed")
+                videoResult = -1
+            }
+            if videoResult == 0 {
+                print("SDL video subsystem initialized")
+                
+                // Try gamepad (optional)
+                SDL_ClearError()
+                if SDL_InitSubSystem(gamepadFlag) == 0 {
+                    print("SDL gamepad subsystem initialized")
+                } else {
+                    let errorMsg = String.sdlError() ?? "unknown error"
+                    print("Warning: SDL gamepad subsystem failed: \(errorMsg)")
+                }
+                
+                // Try audio (optional)
+                SDL_ClearError()
+                if SDL_InitSubSystem(audioFlag) == 0 {
+                    print("SDL audio subsystem initialized")
+                } else {
+                    let errorMsg = String.sdlError() ?? "unknown error"
+                    print("Warning: SDL audio subsystem failed: \(errorMsg)")
+                }
+            } else {
+                // Video subsystem is required
+                let errorMsg = String.sdlError() ?? "unknown error"
+                
+                // Check what subsystems ARE actually initialized (sometimes InitSubSystem fails but WasInit shows success)
+                let wasInitVideo = SDL_WasInit(videoFlag)
+                let wasInitEvents = SDL_WasInit(eventsFlag)
+                let wasInitGamepad = SDL_WasInit(gamepadFlag)
+                let wasInitAudio = SDL_WasInit(audioFlag)
+                
+                print("Error: SDL video subsystem init returned error (code: \(videoResult))")
+                print("Currently initialized subsystems (from SDL_WasInit):")
+                print("  - Video: \(wasInitVideo != 0 ? "YES (0x\(String(wasInitVideo, radix: 16)))" : "NO")")
+                print("  - Events: \(wasInitEvents != 0 ? "YES (0x\(String(wasInitEvents, radix: 16)))" : "NO")")
+                print("  - Gamepad: \(wasInitGamepad != 0 ? "YES (0x\(String(wasInitGamepad, radix: 16)))" : "NO")")
+                print("  - Audio: \(wasInitAudio != 0 ? "YES (0x\(String(wasInitAudio, radix: 16)))" : "NO")")
+                
+                if !errorMsg.isEmpty && errorMsg != "unknown error" {
+                    print("Error message: \(errorMsg)")
+                }
+                print("Note: libdecor-gtk warnings are harmless - SDL should fall back automatically")
+                
+                // Provide troubleshooting info
+                if errorMsg == "unknown error" || errorMsg.isEmpty {
+                    print("\nSDL_GetError() returned NULL/empty - troubleshooting:")
+                    let display = ProcessInfo.processInfo.environment["DISPLAY"] ?? "not set"
+                    let waylandDisplay = ProcessInfo.processInfo.environment["WAYLAND_DISPLAY"] ?? "not set"
+                    let sdlDriver = ProcessInfo.processInfo.environment["SDL_VIDEODRIVER"] ?? "not set"
+                    print("  - DISPLAY: \(display)")
+                    print("  - WAYLAND_DISPLAY: \(waylandDisplay)")
+                    print("  - SDL_VIDEODRIVER: \(sdlDriver)")
+                    print("  - System issue detected: libX11 has undefined symbols (see LD_DEBUG output)")
+                    print("  - Video driver is already forced to wayland, but SDL may still probe X11")
+                    print("  - Try reinstalling X11 libraries:")
+                    print("    pacman -S libx11 libxext libxfixes")
+                    print("  - Or try updating all packages: sudo pacman -Syu")
+                    print("  - Note: Since you're on Wayland, X11 issues shouldn't affect SDL_Wayland")
+                }
+                
+                // Don't return if video subsystem is actually initialized despite error code
+                // Sometimes SDL reports error but subsystem is usable
+                if wasInitVideo == 0 {
+                    print("\nFatal: Video subsystem not initialized (SDL_WasInit confirms), cannot continue")
+                    return
+                } else {
+                    print("\nWarning: Video init reported failure but SDL_WasInit shows it's initialized")
+                    print("Attempting to continue (SDL may have initialized despite error code)...")
+                }
+            }
         }
         
         // Initialize Swift-native text renderer (replaces SDL3_ttf)

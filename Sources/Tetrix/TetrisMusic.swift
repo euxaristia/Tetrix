@@ -45,20 +45,34 @@ class AudioStream {
     }
     
     func resume() {
-        if let stream = sdlStream {
-            SDL_ResumeAudioStreamDevice(stream)
+        guard let stream = sdlStream else { return }
+        // Check if audio subsystem is initialized before trying to resume
+        let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
+        guard SDL_WasInit(audioFlag) != 0 else {
+            print("Warning: Cannot resume audio - audio subsystem not initialized")
+            return
         }
+        // SDL_GetAudioStreamDevice can crash if stream is invalid, so we need to be extra careful
+        // Try to get device ID - if this crashes, the stream is corrupted
+        var deviceID: UInt32 = 0
+        // We can't really check if the stream is valid before calling SDL_GetAudioStreamDevice
+        // But we can check if it returns 0 or the default device IDs
+        deviceID = SDL_GetAudioStreamDevice(stream)
+        guard deviceID != 0 && deviceID != 0xFFFFFFFF && deviceID != 0xFFFFFFFE else {
+            print("Warning: Cannot resume audio - invalid device ID: 0x\(String(deviceID, radix: 16))")
+            return
+        }
+        _ = SDL_ResumeAudioStreamDevice(deviceID)
     }
     
     func pause() {
-        if let stream = sdlStream {
-            SDL_PauseAudioStreamDevice(stream)
-        }
+        guard let stream = sdlStream else { return }
+        _ = SDL_PauseAudioStreamDevice(stream)
     }
     
     func getQueued() -> Int32 {
         guard let stream = sdlStream else { return 0 }
-        return SDL_GetAudioStreamQueued(stream)
+        return Int32(SDL_GetAudioStreamQueued(stream))
     }
     
     func putData(_ data: UnsafeRawPointer, _ len: Int32) -> Bool {
@@ -156,6 +170,13 @@ class TetrisMusic {
     }
     
     private func setupAudio() {
+        // Check if audio subsystem is initialized
+        let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
+        guard SDL_WasInit(audioFlag) != 0 else {
+            print("Warning: Audio subsystem not initialized, music disabled")
+            return
+        }
+        
         let spec = AudioSpec(
             frequency: Int32(sampleRate),
             format: AudioFormat.s16,  // SDL3: 16-bit signed samples (UInt32)
@@ -173,7 +194,10 @@ class TetrisMusic {
         }
         
         // SDL3: Device starts paused, resume to start playback
-        audioStream?.resume()
+        // Only resume if audio subsystem is still initialized
+        // But don't resume immediately - let the caller decide when to start
+        // This avoids crashes if the stream is invalid
+        print("Audio stream created successfully (will resume when music starts)")
     }
     
     func start() {

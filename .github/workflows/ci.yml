@@ -137,7 +137,7 @@ jobs:
         $vcpkgLibPath = "$env:VCPKG_ROOT\installed\x64-windows-static\lib"
         
         # Debug: List all files in the lib directory
-        Write-Host "Contents of $vcpkgLibPath:"
+        Write-Host "Contents of ${vcpkgLibPath}:"
         if (Test-Path $vcpkgLibPath) {
           Get-ChildItem "$vcpkgLibPath\*" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "  $($_.Name)"
@@ -181,7 +181,7 @@ jobs:
           Write-Host "Copied $($sdl3Lib.Name) to SDL3.lib"
         } else {
           Write-Host "Error: SDL3 library not found in vcpkg"
-          Write-Host "Searched in: $vcpkgLibPath"
+          Write-Host "Searched in: ${vcpkgLibPath}"
           Write-Host "Tried patterns: $($possibleLibNames -join ', ')"
           exit 1
         }

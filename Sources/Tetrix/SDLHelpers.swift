@@ -31,7 +31,9 @@ enum SDLResult {
         if success {
             self = .success
         } else {
-            self = .failure(String.sdlError() ?? "Unknown SDL error")
+            // Try to get error message, but provide more context if unavailable
+            let errorMsg = String.sdlError() ?? "Unknown SDL error (SDL_GetError returned NULL or empty)"
+            self = .failure(errorMsg)
         }
     }
     
@@ -54,7 +56,7 @@ enum SDLResult {
 enum SDLSubsystem: UInt32 {
     case video = 0x00000020      // SDL_INIT_VIDEO
     case audio = 0x00000010      // SDL_INIT_AUDIO
-    case gamepad = 0x00000200    // SDL_INIT_GAMEPAD
+    case gamepad = 0x00002000    // SDL_INIT_GAMEPAD
     
     static func combine(subsystems: [SDLSubsystem]) -> UInt32 {
         return subsystems.reduce(0) { $0 | $1.rawValue }
@@ -65,9 +67,16 @@ enum SDLSubsystem: UInt32 {
 struct SDLHelper {
     /// Initialize SDL subsystems
     static func initialize(_ flags: UInt32) -> SDLResult {
+        // Clear any previous error
+        SDL_ClearError()
         let result = SDL_Init(flags)
         // SDL_Init returns 0 on success, non-zero on failure
-        return SDLResult(result == 0)
+        if result != 0 {
+            // Get the error message immediately after failure
+            let errorMsg = String.sdlError() ?? "SDL_Init returned error code \(result)"
+            return .failure(errorMsg)
+        }
+        return .success
     }
     
     /// Initialize SDL with subsystem flags
