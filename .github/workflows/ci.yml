@@ -97,42 +97,92 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: microsoft/setup-msbuild@v1.3.1
     
-    - name: Install vcpkg (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: pwsh
-      run: |
-        # Install vcpkg (handles CMake internally, we don't need to install CMake ourselves)
-        if (-not (Test-Path "$env:VCPKG_ROOT")) {
-          git clone https://github.com/Microsoft/vcpkg.git $env:TEMP\vcpkg
-          $env:VCPKG_ROOT = "$env:TEMP\vcpkg"
-          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
-          $env:Path = "$env:VCPKG_ROOT;$env:Path"
-        } else {
-          Write-Host "vcpkg already installed at $env:VCPKG_ROOT"
-        }
-    
     - name: Install SDL3 Static Libraries (Windows)
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
-        # Use vcpkg to install SDL3 static libraries (vcpkg handles CMake internally)
-        $env:VCPKG_ROOT = "$env:TEMP\vcpkg"
+        # Use existing vcpkg installation (comes with Visual Studio)
+        # Find vcpkg if VCPKG_ROOT is not already set
+        if (-not $env:VCPKG_ROOT) {
+          # Check common vcpkg locations
+          $possiblePaths = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\vcpkg",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\VC\vcpkg",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\vcpkg",
+            "C:\vcpkg",
+            "$env:USERPROFILE\vcpkg"
+          )
+          foreach ($path in $possiblePaths) {
+            if (Test-Path "$path\vcpkg.exe") {
+              $env:VCPKG_ROOT = $path
+              Write-Host "Found vcpkg at $env:VCPKG_ROOT"
+              break
+            }
+          }
+          if (-not $env:VCPKG_ROOT) {
+            Write-Host "Error: vcpkg not found. Please install vcpkg or set VCPKG_ROOT environment variable."
+            exit 1
+          }
+        } else {
+          Write-Host "Using vcpkg at $env:VCPKG_ROOT"
+        }
         $env:Path = "$env:VCPKG_ROOT;$env:Path"
+        # Note: vcpkg may show warnings about unused CMake variables (e.g., SDL_UNIX_CONSOLE_BUILD)
+        # This is a known issue with vcpkg's SDL3 portfile and can be safely ignored
         vcpkg install sdl3:x64-windows-static
         # Copy libraries to project root with standard names
         $vcpkgLibPath = "$env:VCPKG_ROOT\installed\x64-windows-static\lib"
-        $sdl3Lib = Get-ChildItem "$vcpkgLibPath\SDL3*.lib" -ErrorAction SilentlyContinue | Where-Object { 
-          $_.Name -match "^SDL3" -and 
-          $_.Name -notmatch "SDL3_ttf" -and 
-          $_.Name -notmatch "SDL3_test" -and 
-          $_.Name -notmatch "\.dll\.lib$"
-        } | Select-Object -First 1
+        
+        # Debug: List all files in the lib directory
+        Write-Host "Contents of $vcpkgLibPath:"
+        if (Test-Path $vcpkgLibPath) {
+          Get-ChildItem "$vcpkgLibPath\*" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  $($_.Name)"
+          }
+        } else {
+          Write-Host "  Directory does not exist"
+        }
+        
+        # Try different naming patterns for SDL3 static library
+        $possibleLibNames = @(
+          "SDL3-static.lib",
+          "SDL3static.lib",
+          "SDL3.lib",
+          "libSDL3.a",
+          "SDL3d.lib"
+        )
+        
+        $sdl3Lib = $null
+        foreach ($libName in $possibleLibNames) {
+          $libPath = Join-Path $vcpkgLibPath $libName
+          if (Test-Path $libPath) {
+            $sdl3Lib = Get-Item $libPath
+            Write-Host "Found SDL3 library: $($sdl3Lib.FullName)"
+            break
+          }
+        }
+        
+        # If still not found, try pattern matching
+        if (-not $sdl3Lib) {
+          $sdl3Lib = Get-ChildItem "$vcpkgLibPath\SDL3*.lib" -ErrorAction SilentlyContinue | Where-Object { 
+            $_.Name -match "^SDL3" -and 
+            $_.Name -notmatch "SDL3_ttf" -and 
+            $_.Name -notmatch "SDL3_test" -and 
+            $_.Name -notmatch "\.dll\.lib$"
+          } | Select-Object -First 1
+        }
+        
         # SDL3_ttf removed - using Swift-native text rendering
         if ($sdl3Lib) {
           Copy-Item $sdl3Lib.FullName "$env:GITHUB_WORKSPACE\SDL3.lib" -Force
           Write-Host "Copied $($sdl3Lib.Name) to SDL3.lib"
         } else {
           Write-Host "Error: SDL3 library not found in vcpkg"
+          Write-Host "Searched in: $vcpkgLibPath"
+          Write-Host "Tried patterns: $($possibleLibNames -join ', ')"
           exit 1
         }
         # Copy headers
