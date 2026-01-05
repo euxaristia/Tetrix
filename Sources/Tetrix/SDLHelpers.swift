@@ -235,3 +235,317 @@ struct PlatformHelper {
         #endif
     }
 }
+
+// MARK: - Swift-Native Types
+
+/// Swift-native rectangle type (replaces SDL_FRect)
+struct Rect {
+    var x: Float
+    var y: Float
+    var width: Float
+    var height: Float
+    
+    init(x: Float, y: Float, width: Float, height: Float) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+    
+    /// Convert to SDL_FRect for C interop
+    func toSDL() -> SDL_FRect {
+        return SDL_FRect(x: x, y: y, w: width, h: height)
+    }
+    
+    /// Create from SDL_FRect
+    static func fromSDL(_ sdlRect: SDL_FRect) -> Rect {
+        return Rect(x: sdlRect.x, y: sdlRect.y, width: sdlRect.w, height: sdlRect.h)
+    }
+}
+
+/// Swift-native color type (replaces SDL_Color)
+struct Color {
+    var r: UInt8
+    var g: UInt8
+    var b: UInt8
+    var a: UInt8
+    
+    init(r: UInt8, g: UInt8, b: UInt8, a: UInt8 = 255) {
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+    }
+    
+    /// Convert to SDL_Color for C interop
+    func toSDL() -> SDL_Color {
+        return SDL_Color(r: r, g: g, b: b, a: a)
+    }
+    
+    /// Common colors
+    static let black = Color(r: 0, g: 0, b: 0)
+    static let white = Color(r: 255, g: 255, b: 255)
+    static let red = Color(r: 255, g: 0, b: 0)
+    static let green = Color(r: 0, g: 255, b: 0)
+    static let blue = Color(r: 0, g: 0, b: 255)
+}
+
+// MARK: - Renderer Wrapper
+
+/// Swift-native renderer wrapper (encapsulates SDL renderer operations)
+class Renderer {
+    private let sdlRenderer: OpaquePointer?
+    
+    init(sdlRenderer: OpaquePointer?) {
+        self.sdlRenderer = sdlRenderer
+    }
+    
+    /// Set draw color
+    func setDrawColor(_ color: Color) {
+        SDLRenderHelper.setDrawColor(renderer: sdlRenderer, r: color.r, g: color.g, b: color.b, a: color.a)
+    }
+    
+    /// Set draw color with RGB components
+    func setDrawColor(r: UInt8, g: UInt8, b: UInt8, a: UInt8 = 255) {
+        SDLRenderHelper.setDrawColor(renderer: sdlRenderer, r: r, g: g, b: b, a: a)
+    }
+    
+    /// Clear the renderer
+    func clear() {
+        SDLRenderHelper.clear(renderer: sdlRenderer)
+    }
+    
+    /// Fill a rectangle
+    func fillRect(_ rect: Rect) {
+        var sdlRect = rect.toSDL()
+        SDLRenderHelper.fillRect(renderer: sdlRenderer, rect: &sdlRect)
+    }
+    
+    /// Draw a rectangle outline
+    func drawRect(_ rect: Rect) {
+        var sdlRect = rect.toSDL()
+        SDLRenderHelper.drawRect(renderer: sdlRenderer, rect: &sdlRect)
+    }
+    
+    /// Present the rendered frame
+    func present() {
+        SDL_RenderPresent(sdlRenderer)
+    }
+    
+    /// Render a texture
+    func renderTexture(_ texture: Texture, at rect: Rect, source: Rect? = nil) {
+        var destRect = rect.toSDL()
+        guard let sdlTexture = texture.sdlTexture else { return }
+        // SDL3 API: Convert OpaquePointer to UnsafeMutablePointer<SDL_Texture>
+        let texturePtr = unsafeBitCast(sdlTexture, to: UnsafeMutablePointer<SDL_Texture>.self)
+        if let source = source {
+            var srcRect = source.toSDL()
+            _ = SDL_RenderTexture(sdlRenderer, texturePtr, &srcRect, &destRect)
+        } else {
+            _ = SDL_RenderTexture(sdlRenderer, texturePtr, nil, &destRect)
+        }
+    }
+    
+    /// Get underlying SDL renderer (for advanced operations)
+    var sdlHandle: OpaquePointer? {
+        return sdlRenderer
+    }
+}
+
+// MARK: - Texture Wrapper
+
+/// Swift-native texture wrapper
+class Texture {
+    let sdlTexture: UnsafeMutablePointer<SDL_Texture>?
+    let width: Float
+    let height: Float
+    
+    private init(sdlTexture: UnsafeMutablePointer<SDL_Texture>?, width: Float, height: Float) {
+        self.sdlTexture = sdlTexture
+        self.width = width
+        self.height = height
+    }
+    
+    /// Create texture from surface
+    static func fromSurface(renderer: OpaquePointer?, surface: UnsafeMutablePointer<SDL_Surface>?) -> Texture? {
+        guard let surface = surface else { return nil }
+        guard let texture = SDL_CreateTextureFromSurface(renderer, surface) else { return nil }
+        SDL_DestroySurface(surface)
+        
+        var width: Float = 0
+        var height: Float = 0
+        SDL_GetTextureSize(texture, &width, &height)
+        
+        return Texture(sdlTexture: texture, width: width, height: height)
+    }
+    
+    /// Create texture from text
+    static func fromText(renderer: OpaquePointer?, font: OpaquePointer?, text: String, color: Color) -> Texture? {
+        let sdlColor = color.toSDL()
+        guard let surface = TTFHelper.renderText(font: font, text: text, color: sdlColor) else {
+            return nil
+        }
+        return fromSurface(renderer: renderer, surface: surface)
+    }
+    
+    deinit {
+        if let texture = sdlTexture {
+            SDL_DestroyTexture(texture)
+        }
+    }
+}
+
+// MARK: - Gamepad Wrapper
+
+/// Swift-native gamepad wrapper
+class Gamepad {
+    private let sdlGamepad: OpaquePointer?
+    let id: UInt32
+    
+    init?(id: UInt32) {
+        self.id = id
+        self.sdlGamepad = SDL_OpenGamepad(id)
+        if sdlGamepad == nil {
+            return nil
+        }
+    }
+    
+    var name: String? {
+        return SDLGamepadHelper.getName(gamepad: sdlGamepad)
+    }
+    
+    func close() {
+        if let gamepad = sdlGamepad {
+            SDL_CloseGamepad(gamepad)
+        }
+    }
+    
+    deinit {
+        close()
+    }
+}
+
+// MARK: - Event System
+
+/// Swift-native event types
+enum GameEvent {
+    case quit
+    case keyDown(KeyCode, isRepeat: Bool)
+    case keyUp(KeyCode)
+    case gamepadAdded(UInt32)
+    case gamepadRemoved(UInt32)
+    case gamepadButtonDown(UInt8)
+    case gamepadButtonUp(UInt8)
+    case windowFocusLost
+    case windowFocusGained
+}
+
+/// Swift-native key code enum (replaces SDL_Scancode usage)
+enum KeyCode {
+    case a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z
+    case space
+    case escape
+    case left, right, up, down
+    case f11
+    case unknown(UInt32)
+    
+    init(from scancode: SDL_Scancode) {
+        switch scancode {
+        case SDL_SCANCODE_A: self = .a
+        case SDL_SCANCODE_B: self = .b
+        case SDL_SCANCODE_C: self = .c
+        case SDL_SCANCODE_D: self = .d
+        case SDL_SCANCODE_E: self = .e
+        case SDL_SCANCODE_F: self = .f
+        case SDL_SCANCODE_G: self = .g
+        case SDL_SCANCODE_H: self = .h
+        case SDL_SCANCODE_I: self = .i
+        case SDL_SCANCODE_J: self = .j
+        case SDL_SCANCODE_K: self = .k
+        case SDL_SCANCODE_L: self = .l
+        case SDL_SCANCODE_M: self = .m
+        case SDL_SCANCODE_N: self = .n
+        case SDL_SCANCODE_O: self = .o
+        case SDL_SCANCODE_P: self = .p
+        case SDL_SCANCODE_Q: self = .q
+        case SDL_SCANCODE_R: self = .r
+        case SDL_SCANCODE_S: self = .s
+        case SDL_SCANCODE_T: self = .t
+        case SDL_SCANCODE_U: self = .u
+        case SDL_SCANCODE_V: self = .v
+        case SDL_SCANCODE_W: self = .w
+        case SDL_SCANCODE_X: self = .x
+        case SDL_SCANCODE_Y: self = .y
+        case SDL_SCANCODE_Z: self = .z
+        case SDL_SCANCODE_SPACE: self = .space
+        case SDL_SCANCODE_ESCAPE: self = .escape
+        case SDL_SCANCODE_LEFT: self = .left
+        case SDL_SCANCODE_RIGHT: self = .right
+        case SDL_SCANCODE_UP: self = .up
+        case SDL_SCANCODE_DOWN: self = .down
+        case SDL_SCANCODE_F11: self = .f11
+        default: self = .unknown(scancode.rawValue)
+        }
+    }
+}
+
+/// Event poller that converts SDL events to Swift-native events
+struct EventPoller {
+    /// Poll for next event, returns Swift-native event or nil
+    static func poll() -> GameEvent? {
+        var sdlEvent = SDL_Event()
+        guard SDLEventHelper.pollEvent(&sdlEvent) else {
+            return nil
+        }
+        
+        switch UInt32(sdlEvent.type) {
+        case UInt32(SDL_EVENT_QUIT.rawValue):
+            return .quit
+            
+        case UInt32(SDL_EVENT_KEY_DOWN.rawValue):
+            let keyEvent = withUnsafePointer(to: &sdlEvent.key) { $0 }
+            let scancode = SDLEventHelper.getScancode(from: keyEvent)
+            let isRepeat = SDLEventHelper.isRepeat(from: keyEvent)
+            return .keyDown(KeyCode(from: scancode), isRepeat: isRepeat)
+            
+        case UInt32(SDL_EVENT_KEY_UP.rawValue):
+            let keyEvent = withUnsafePointer(to: &sdlEvent.key) { $0 }
+            let scancode = SDLEventHelper.getScancode(from: keyEvent)
+            return .keyUp(KeyCode(from: scancode))
+            
+        case UInt32(SDL_EVENT_GAMEPAD_ADDED.rawValue):
+            let gamepadEvent = withUnsafePointer(to: &sdlEvent.gdevice) { $0 }
+            return .gamepadAdded(gamepadEvent.pointee.which)
+            
+        case UInt32(SDL_EVENT_GAMEPAD_REMOVED.rawValue):
+            let gamepadEvent = withUnsafePointer(to: &sdlEvent.gdevice) { $0 }
+            return .gamepadRemoved(gamepadEvent.pointee.which)
+            
+        case UInt32(SDL_EVENT_GAMEPAD_BUTTON_DOWN.rawValue):
+            let buttonEvent = withUnsafePointer(to: &sdlEvent.gbutton) { $0 }
+            return .gamepadButtonDown(SDLEventHelper.getButton(from: buttonEvent))
+            
+        case UInt32(SDL_EVENT_GAMEPAD_BUTTON_UP.rawValue):
+            let buttonEvent = withUnsafePointer(to: &sdlEvent.gbutton) { $0 }
+            return .gamepadButtonUp(SDLEventHelper.getButton(from: buttonEvent))
+            
+        case UInt32(SDL_EVENT_WINDOW_FOCUS_LOST.rawValue):
+            return .windowFocusLost
+            
+        case UInt32(SDL_EVENT_WINDOW_FOCUS_GAINED.rawValue):
+            return .windowFocusGained
+            
+        default:
+            return nil
+        }
+    }
+}
+
+// MARK: - Renderer Creation Helper
+
+/// Helper to create renderer
+struct RendererHelper {
+    static func create(window: OpaquePointer?) -> OpaquePointer? {
+        return SDL_CreateRenderer(window, nil)
+    }
+}
