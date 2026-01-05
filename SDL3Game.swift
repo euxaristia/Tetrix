@@ -329,7 +329,8 @@ class SDL3Game {
                 // Immediate movement on first press
                 let couldMove = engine.moveDown()
                 if !couldMove {
-                    lastDropTime = Date()
+                    downKeyHeld = false // Stop soft drop if piece locked immediately
+                    lastDropTime = Date() // Reset main loop timer for proper next piece timing
                 }
             }
         case SDL_SCANCODE_W, SDL_SCANCODE_UP:
@@ -417,9 +418,10 @@ class SDL3Game {
             dPadDownHeld = true
             dPadDownRepeatTimer = Date()
             let couldMove = engine.moveDown() // Immediate action
-            // If piece locked (couldn't move), reset the automatic drop timer
+            // If piece locked (couldn't move), stop soft drop and reset the automatic drop timer
             if !couldMove {
-                lastDropTime = Date()
+                dPadDownHeld = false // Stop soft drop if piece locked immediately
+                lastDropTime = Date() // Reset main loop timer for proper next piece timing
             }
         case 0: // SDL_GAMEPAD_BUTTON_A (X button on DualSense)
             engine.rotate()
@@ -459,10 +461,11 @@ class SDL3Game {
         if timeSinceLastAction >= dPadDownRepeatInterval {
             let couldMove = engine.moveDown()
             dPadDownRepeatTimer = Date()
-            // If piece locked (couldn't move), reset the automatic drop timer
+            // If piece locked (couldn't move), stop soft drop and reset the automatic drop timer
             // so the next piece doesn't inherit the soft drop momentum
             if !couldMove {
-                lastDropTime = Date()
+                dPadDownHeld = false // Stop soft drop immediately
+                lastDropTime = Date() // Reset main loop timer for proper next piece timing
             }
         }
     }
@@ -476,10 +479,11 @@ class SDL3Game {
         if timeSinceLastAction >= downKeyRepeatInterval {
             let couldMove = engine.moveDown()
             downKeyRepeatTimer = Date()
-            // If piece locked (couldn't move), reset the automatic drop timer
+            // If piece locked (couldn't move), stop soft drop and reset the automatic drop timer
             // so the next piece doesn't inherit the soft drop momentum
             if !couldMove {
-                lastDropTime = Date()
+                downKeyHeld = false // Stop soft drop immediately
+                lastDropTime = Date() // Reset main loop timer for proper next piece timing
             }
         }
     }
