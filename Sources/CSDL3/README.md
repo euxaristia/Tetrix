@@ -11,7 +11,7 @@ The structure should be:
 ```
 Sources/CSDL3/include/SDL3/
   ├── SDL.h
-  ├── SDL_ttf.h
+  ├── (SDL_ttf.h removed - using Swift-native text rendering)
   ├── SDL_audio.h
   └── ... (other SDL3 headers)
 ```
@@ -22,4 +22,4 @@ If you downloaded SDL3 for Windows, the headers are typically in:
 
 You also need:
 - `SDL3.dll` - should be in the project root (already present)
-- `SDL3.lib` and `SDL3_ttf.lib` - import libraries for linking (may be needed)
+- `SDL3.lib` - import library for linking (SDL3_ttf removed - using Swift-native text rendering)

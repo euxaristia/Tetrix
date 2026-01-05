@@ -62,8 +62,7 @@ class SDL3Game {
         // Initialize platform-specific subsystems
         #if os(Linux)
         // Linux: Use SDL3 (handles X11/Wayland automatically)
-        let initFlags = UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMEPAD) | UInt32(SDL_INIT_AUDIO)
-        let sdlResult = SDLHelper.initialize(initFlags)
+        let sdlResult = SDLHelper.initialize(subsystems: .video, .gamepad, .audio)
         if !sdlResult.isSuccess {
             print("SDL_Init failed: \(sdlResult.errorMessage ?? "Unknown error")")
             return
@@ -81,7 +80,7 @@ class SDL3Game {
         }
         
         // Create SDL3 renderer on Linux
-        if let sdlRenderer = RendererHelper.create(window: window) {
+        if let sdlRenderer = SDL_CreateRenderer(window, nil) {
             renderer = Renderer(sdlRenderer: sdlRenderer)
             
             // Initialize text renderer and set renderer
@@ -112,8 +111,7 @@ class SDL3Game {
         }
         
         // Still need SDL3 for gamepad and audio on Windows/macOS
-        let initFlags = UInt32(SDL_INIT_GAMEPAD) | UInt32(SDL_INIT_AUDIO)
-        let sdlResult = SDLHelper.initialize(initFlags)
+        let sdlResult = SDLHelper.initialize(subsystems: .gamepad, .audio)
         if !sdlResult.isSuccess {
             print("Warning: SDL_Init for gamepad/audio failed: \(sdlResult.errorMessage ?? "Unknown error")")
         }
@@ -190,14 +188,12 @@ class SDL3Game {
         textRenderer = nil
         #if os(Linux)
         renderer = nil
-        if window != nil {
-            SDL_DestroyWindow(window)
-        }
+        SDLHelper.destroyWindow(window)
         #else
         renderer = nil
         swiftWindow = nil
         #endif
-        SDL_Quit()
+        SDLHelper.quit()
     }
     
     func run() {
@@ -478,12 +474,14 @@ class SDL3Game {
     }
     
     private func handleGamepadButtonUp(_ button: UInt32) {
-        switch button {
-        case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
+        guard let gamepadButton = GamepadButton(rawValue: UInt8(button)) else { return }
+        
+        switch gamepadButton {
+        case .dpadDown:
             dPadDownHeld = false
-        case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
+        case .dpadLeft:
             dPadLeftHeld = false
-        case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
+        case .dpadRight:
             dPadRightHeld = false
         default:
             break

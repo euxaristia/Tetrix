@@ -45,25 +45,25 @@ A complete Tetris game implementation written from scratch in Swift using SDL3. 
 
 ### Windows
 
-SDL3 libraries (`SDL3.dll` and `SDL3_ttf.dll`) and import libraries (`SDL3.lib` and `SDL3_ttf.lib`) are included in the project.
+SDL3 libraries (`SDL3.dll`) and import libraries (`SDL3.lib`) are included in the project.
 
 ### Linux (Arch/CachyOS)
 
 Install SDL3 development libraries:
 ```bash
-sudo pacman -S sdl3 sdl3_ttf
+sudo pacman -S sdl3
 ```
 
 ### Linux (Ubuntu/Debian)
 
 ```bash
-sudo apt-get install libsdl3-dev libsdl3-ttf-dev
+sudo apt-get install libsdl3-dev
 ```
 
 ### macOS
 
 ```bash
-brew install sdl3 sdl3_ttf
+brew install sdl3
 ```
 
 ## Running the Game
@@ -82,7 +82,7 @@ swift build
 
 - Swift 5.9+
 - SDL3 development libraries
-- SDL3_ttf (for text rendering)
+- Text rendering uses Swift-native implementations (no SDL3_ttf required)
 
 ## Project Structure
 
@@ -97,8 +97,8 @@ swift build
 
 ## Notes
 
-- The game uses SDL3 for cross-platform windowed graphics
-- Text rendering requires SDL3_ttf
+- The game uses SDL3 for cross-platform windowed graphics (Windows/macOS use native graphics, Linux uses SDL3)
+- Text rendering uses Swift-native implementations (Windows: GDI, macOS: Core Text, Linux: Bitmap font)
 - The game runs at 60 FPS
 - Supports gamepad/controller input
 

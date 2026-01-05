@@ -50,12 +50,29 @@ enum SDLResult {
     }
 }
 
+/// SDL subsystem initialization flags (replaces SDL_INIT_* constants)
+enum SDLSubsystem: UInt32 {
+    case video = 0x00000020      // SDL_INIT_VIDEO
+    case audio = 0x00000010      // SDL_INIT_AUDIO
+    case gamepad = 0x00000200    // SDL_INIT_GAMEPAD
+    
+    static func combine(subsystems: [SDLSubsystem]) -> UInt32 {
+        return subsystems.reduce(0) { $0 | $1.rawValue }
+    }
+}
+
 /// Helper functions for SDL operations
 struct SDLHelper {
     /// Initialize SDL subsystems
     static func initialize(_ flags: UInt32) -> SDLResult {
         let success = SDL_Init(flags)
         return SDLResult(success)
+    }
+    
+    /// Initialize SDL with subsystem flags
+    static func initialize(subsystems: SDLSubsystem...) -> SDLResult {
+        let flags = SDLSubsystem.combine(subsystems: subsystems)
+        return initialize(flags)
     }
     
     // TTF initialization removed - using Swift-native text rendering
@@ -65,6 +82,18 @@ struct SDLHelper {
         return title.withSDLString { cString in
             SDL_CreateWindow(cString, width, height, flags)
         }
+    }
+    
+    /// Destroy a window
+    static func destroyWindow(_ window: OpaquePointer?) {
+        if let window = window {
+            SDL_DestroyWindow(window)
+        }
+    }
+    
+    /// Quit SDL subsystems
+    static func quit() {
+        SDL_Quit()
     }
     
     /// Get error message or default
@@ -393,6 +422,48 @@ class Texture {
     }
 }
 
+// MARK: - Gamepad Button Enum (replaces SDL_GAMEPAD_BUTTON_* constants)
+
+/// Swift-native gamepad button enum (replaces SDL_GAMEPAD_BUTTON_* constants)
+enum GamepadButton: UInt8 {
+    case a = 0           // SDL_GAMEPAD_BUTTON_A
+    case b = 1           // SDL_GAMEPAD_BUTTON_B
+    case x = 2           // SDL_GAMEPAD_BUTTON_X
+    case y = 3           // SDL_GAMEPAD_BUTTON_Y
+    case back = 4        // SDL_GAMEPAD_BUTTON_BACK (Share on DualSense)
+    case guide = 5       // SDL_GAMEPAD_BUTTON_GUIDE
+    case start = 6       // SDL_GAMEPAD_BUTTON_START (Options on DualSense)
+    case leftStick = 7   // SDL_GAMEPAD_BUTTON_LEFT_STICK
+    case rightStick = 8  // SDL_GAMEPAD_BUTTON_RIGHT_STICK
+    case leftShoulder = 9 // SDL_GAMEPAD_BUTTON_LEFT_SHOULDER
+    case rightShoulder = 10 // SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER
+    case dpadUp = 11     // SDL_GAMEPAD_BUTTON_DPAD_UP
+    case dpadDown = 12   // SDL_GAMEPAD_BUTTON_DPAD_DOWN
+    case dpadLeft = 13   // SDL_GAMEPAD_BUTTON_DPAD_LEFT
+    case dpadRight = 14  // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
+    
+    init?(rawValue: UInt8) {
+        switch rawValue {
+        case 0: self = .a
+        case 1: self = .b
+        case 2: self = .x
+        case 3: self = .y
+        case 4: self = .back
+        case 5: self = .guide
+        case 6: self = .start
+        case 7: self = .leftStick
+        case 8: self = .rightStick
+        case 9: self = .leftShoulder
+        case 10: self = .rightShoulder
+        case 11: self = .dpadUp
+        case 12: self = .dpadDown
+        case 13: self = .dpadLeft
+        case 14: self = .dpadRight
+        default: return nil
+        }
+    }
+}
+
 // MARK: - Gamepad Wrapper
 
 /// Swift-native gamepad wrapper
@@ -542,8 +613,4 @@ struct EventPoller {
 // MARK: - Renderer Creation Helper
 
 /// Helper to create renderer
-struct RendererHelper {
-    static func create(window: OpaquePointer?) -> OpaquePointer? {
-        return SDL_CreateRenderer(window, nil)
-    }
-}
+// RendererHelper removed - using Renderer class directly

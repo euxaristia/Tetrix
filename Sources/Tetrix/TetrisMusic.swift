@@ -1,6 +1,67 @@
 import Foundation
 import CSDL3
 
+// MARK: - SDL Audio Wrapper (replaces direct SDL audio calls)
+
+/// Swift-native audio stream wrapper (replaces SDL_AudioStream)
+class AudioStream {
+    private var sdlStream: OpaquePointer?
+    
+    init?(device: UInt32, spec: inout SDL_AudioSpec, allowedChanges: UInt32, callback: UnsafeMutableRawPointer?) {
+        // SDL_OpenAudioDeviceStream signature: (devid, spec, callback, userdata)
+        // callback is SDL_AudioStreamCallback?, userdata is UnsafeMutableRawPointer?
+        // We pass callback as nil and userdata as nil
+        let callbackPtr: SDL_AudioStreamCallback? = nil
+        let userdata: UnsafeMutableRawPointer? = nil
+        sdlStream = SDL_OpenAudioDeviceStream(device, &spec, callbackPtr, userdata)
+        if sdlStream == nil {
+            return nil
+        }
+    }
+    
+    // Convenience initializer without allowedChanges parameter
+    convenience init?(device: UInt32, spec: inout SDL_AudioSpec) {
+        self.init(device: device, spec: &spec, allowedChanges: 0, callback: nil)
+    }
+    
+    func resume() {
+        if let stream = sdlStream {
+            SDL_ResumeAudioStreamDevice(stream)
+        }
+    }
+    
+    func pause() {
+        if let stream = sdlStream {
+            SDL_PauseAudioStreamDevice(stream)
+        }
+    }
+    
+    func getQueued() -> Int32 {
+        guard let stream = sdlStream else { return 0 }
+        return SDL_GetAudioStreamQueued(stream)
+    }
+    
+    func putData(_ data: UnsafeRawPointer, _ len: Int32) -> Bool {
+        guard let stream = sdlStream else { return false }
+        return SDL_PutAudioStreamData(stream, data, len)
+    }
+    
+    deinit {
+        if let stream = sdlStream {
+            SDL_DestroyAudioStream(stream)
+        }
+    }
+}
+
+/// SDL audio constants (replaces SDL_* constants)
+enum AudioFormat {
+    static let s16 = SDL_AUDIO_S16
+}
+
+enum AudioDevice {
+    static let defaultPlayback = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK
+}
+
 class TetrisMusic {
     // Musical note frequencies (Hz) - just the notes we need for Tetris theme
     // Based on A4 = 440Hz standard tuning
@@ -27,7 +88,7 @@ class TetrisMusic {
         "E6": 1318.51  // E6 (higher octave)
     ]
     
-    private var audioStream: OpaquePointer? = nil  // SDL_AudioStream*
+    private var audioStream: AudioStream? = nil
     private var sampleRate: Int = 44100
     private var isPlaying = false
     private var samplesGenerated = 0
@@ -75,12 +136,12 @@ class TetrisMusic {
     private func setupAudio() {
         var spec = SDL_AudioSpec()
         spec.freq = Int32(sampleRate)
-        spec.format = SDL_AUDIO_S16  // SDL3: 16-bit signed samples
+        spec.format = AudioFormat.s16  // SDL3: 16-bit signed samples
         spec.channels = 1  // Mono audio
         
-        // SDL3: Use SDL_OpenAudioDeviceStream to open device and create stream
+        // SDL3: Use Swift-native audio stream wrapper
         // Pass nil for callback - we'll queue data manually
-        audioStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nil, nil)
+        audioStream = AudioStream(device: AudioDevice.defaultPlayback, spec: &spec)
         
         if audioStream == nil {
             let errorString = String.sdlError() ?? "Unknown error"
@@ -89,7 +150,7 @@ class TetrisMusic {
         }
         
         // SDL3: Device starts paused, resume to start playback
-        SDL_ResumeAudioStreamDevice(audioStream)
+        audioStream?.resume()
     }
     
     func start() {
@@ -111,8 +172,8 @@ class TetrisMusic {
         guard isPlaying, let stream = audioStream else { return }
         
         // Keep the audio queue filled (generate ahead)
-        // SDL3: Use SDL_GetAudioStreamQueued to check queued data size
-        let queuedSize = SDL_GetAudioStreamQueued(stream)
+        // SDL3: Use Swift-native audio stream wrapper
+        let queuedSize = stream.getQueued()
         let bytesPerSecond = sampleRate * 2 // sampleRate * 2 bytes (16-bit) * 1 channel
         let targetQueueSize = bytesPerSecond / 4 // 250ms buffer
         
@@ -157,11 +218,11 @@ class TetrisMusic {
         
         samplesGenerated += numSamples
         
-        // SDL3: Use SDL_PutAudioStreamData to queue audio data
+        // SDL3: Use Swift-native audio stream wrapper
         guard let stream = audioStream else { return }
         let _ = samples.withUnsafeBufferPointer { buffer in
             let bytesToWrite = samples.count * 2  // 2 bytes per Int16 sample
-            SDL_PutAudioStreamData(stream, buffer.baseAddress, Int32(bytesToWrite))
+            _ = stream.putData(buffer.baseAddress!, Int32(bytesToWrite))
         }
         
         // Move to next note
@@ -169,9 +230,7 @@ class TetrisMusic {
     }
     
     deinit {
-        if let stream = audioStream {
-            // SDL3: Destroying the stream also closes the device
-            SDL_DestroyAudioStream(stream)
-        }
+        // AudioStream deinit will clean up SDL stream automatically
+        audioStream = nil
     }
 }
