@@ -65,8 +65,9 @@ enum SDLSubsystem: UInt32 {
 struct SDLHelper {
     /// Initialize SDL subsystems
     static func initialize(_ flags: UInt32) -> SDLResult {
-        let success = SDL_Init(flags)
-        return SDLResult(success)
+        let result = SDL_Init(flags)
+        // SDL_Init returns 0 on success, non-zero on failure
+        return SDLResult(result == 0)
     }
     
     /// Initialize SDL with subsystem flags
