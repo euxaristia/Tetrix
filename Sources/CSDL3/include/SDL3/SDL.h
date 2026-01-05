@@ -14,6 +14,7 @@
 #include <SDL3/SDL_endian.h>
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_iostream.h>
+#include <SDL3/SDL_mutex.h>
 
 // Video and rendering
 #include <SDL3/SDL_blendmode.h>
