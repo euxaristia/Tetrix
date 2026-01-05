@@ -100,10 +100,39 @@ jobs:
       run: |
         swift build -c release
     
+    - name: Bundle Windows Release (Windows)
+      if: matrix.os == 'windows-latest' && github.event_name == 'push'
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path release-bundle | Out-Null
+        Copy-Item .build\release\Tetrix.exe release-bundle\
+        Copy-Item SDL3.dll release-bundle\
+        Copy-Item SDL3_ttf.dll release-bundle\
+        # Find and copy Swift runtime DLLs
+        $swiftDlls = @("swiftCore.dll", "swiftWinSDK.dll", "FoundationEssentials.dll", "swiftCRT.dll")
+        $swiftPath = "$env:LOCALAPPDATA\Programs\Swift"
+        foreach ($dll in $swiftDlls) {
+          $found = Get-ChildItem -Path $swiftPath -Filter $dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            Copy-Item $found.FullName release-bundle\
+            Write-Host "Copied $dll from $($found.FullName)"
+          } else {
+            Write-Host "Warning: $dll not found"
+          }
+        }
+        Compress-Archive -Path release-bundle\* -DestinationPath Tetrix-windows.zip -Force
+    
     - name: Rename macOS Binary
       if: matrix.os == 'macos-latest' && github.event_name == 'push'
       run: |
         mv .build/release/Tetrix .build/release/TetrixDarwin
+    
+    - name: Delete Existing Release (Linux - first platform)
+      if: matrix.os == 'ubuntu-22.04' && github.event_name == 'push'
+      run: |
+        gh release delete latest --yes || echo "Release 'latest' does not exist, will create new one"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Create/Update Release and Upload Asset (Linux)
       if: matrix.os == 'ubuntu-22.04' && github.event_name == 'push'
@@ -143,6 +172,6 @@ jobs:
         draft: false
         prerelease: false
         generate_release_notes: true
-        files: .build/release/Tetrix.exe
+        files: Tetrix-windows.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

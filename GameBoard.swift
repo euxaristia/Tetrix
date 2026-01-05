@@ -23,15 +23,19 @@ struct GameBoard {
     func canPlace(_ tetromino: Tetromino) -> Bool {
         let blocks = tetromino.getAbsoluteBlocks()
         // Allow blocks above the board (y < 0) - pieces can spawn partially above
+        // But reject blocks outside horizontal bounds (x < 0 or x >= width)
         // Only check blocks that are within or below the board bounds
         return blocks.allSatisfy { block in
-            if block.y < 0 {
-                // Block is above the board - this is allowed for spawning
-                return true
-            } else {
-                // Block is within board bounds - must be valid and empty
-                return isPositionValid(block) && isCellEmpty(block)
+            // Reject blocks outside horizontal bounds
+            if block.x < 0 || block.x >= GameBoard.width {
+                return false
             }
+            // Allow blocks above the board (y < 0) - this is allowed for spawning
+            if block.y < 0 {
+                return true
+            }
+            // Block is within board bounds - must be valid and empty
+            return isPositionValid(block) && isCellEmpty(block)
         }
     }
     

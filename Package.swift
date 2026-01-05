@@ -35,7 +35,20 @@ let package = Package(
             path: ".",
             exclude: [
                 "README.md",
-                "DEBUG.md"
+                "DEBUG.md",
+                "README_OBFUSCATION.md",
+                "SDL3.dll",
+                "SDL3.lib",
+                "SDL3.exp",
+                "SDL3_exports.txt",
+                "SDL3_ttf.dll",
+                "SDL3_ttf.lib",
+                "SDL3_ttf.exp",
+                "SDL3_ttf_exports.txt",
+                "create_sdl3_lib.ps1",
+                "create_sdl3_ttf_lib.ps1",
+                "generate_lib.ps1",
+                "Sources"
             ],
             sources: [
                 "main.swift",
