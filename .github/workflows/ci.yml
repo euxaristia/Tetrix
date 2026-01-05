@@ -30,19 +30,19 @@ jobs:
       if: matrix.os == 'ubuntu-22.04'
       uses: SwiftyLab/setup-swift@latest
       with:
-        swift-version: "6.2"
+        swift-version: "6.2.1"
     
     - name: Setup Swift (macOS)
       if: matrix.os == 'macos-latest'
       uses: SwiftyLab/setup-swift@latest
       with:
-        swift-version: "6.2"
+        swift-version: "6.2.1"
     
     - name: Setup Swift (Windows)
       if: matrix.os == 'windows-latest'
       uses: SwiftyLab/setup-swift@latest
       with:
-        swift-version: "5.10"
+        swift-version: "6.2.1"
     
     - name: Install SDL3 (Ubuntu)
       if: matrix.os == 'ubuntu-22.04'
@@ -83,6 +83,12 @@ jobs:
         LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
       run: |
         swift build -c release
+    
+    - name: Setup Visual Studio 2026 (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: microsoft/setup-msbuild@v1.3.1
+      with:
+        msbuild-version: 'latest'
     
     - name: Build Release (Windows)
       if: matrix.os == 'windows-latest'
