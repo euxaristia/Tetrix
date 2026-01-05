@@ -34,7 +34,7 @@
 // Initialization
 #include <SDL3/SDL_init.h>
 
-// Compatibility (may be needed)
-#include <SDL3/SDL_oldnames.h>
+// Compatibility (may be needed) - commented out to avoid conflicts with minimal headers
+// #include <SDL3/SDL_oldnames.h>
 
 #endif /* SDL_h_ */

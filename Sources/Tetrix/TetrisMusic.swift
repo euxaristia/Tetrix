@@ -19,7 +19,7 @@ struct AudioSpec {
     func toSDL() -> SDL_AudioSpec {
         var sdlSpec = SDL_AudioSpec()
         sdlSpec.freq = frequency
-        sdlSpec.format = SDL_AudioFormat(rawValue: format) ?? SDL_AUDIO_S16
+        sdlSpec.format = SDL_AudioFormat(rawValue: format)
         sdlSpec.channels = Int32(channels)
         return sdlSpec
     }
