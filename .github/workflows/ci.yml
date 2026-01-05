@@ -118,6 +118,17 @@ jobs:
         cmake --install . --config Release --prefix $sdl3InstallPath
         if (-not $?) {
           Write-Host "Warning: SDL3 install failed, trying to find library in build output"
+        } else {
+          Write-Host "SDL3 installed successfully to $sdl3InstallPath"
+          # Verify SDL3Config.cmake was installed
+          $configPath = "$sdl3InstallPath\lib\cmake\SDL3\SDL3Config.cmake"
+          if (Test-Path $configPath) {
+            Write-Host "SDL3Config.cmake found in install directory: $configPath"
+          } else {
+            Write-Host "Warning: SDL3Config.cmake not found in install directory"
+            Write-Host "Checking install directory structure:"
+            Get-ChildItem -Recurse -Path $sdl3InstallPath -Filter "*.cmake" -ErrorAction SilentlyContinue | Select-Object FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
+          }
         }
         # Try to find the library (prefer install, then build output)
         # Exclude test, ttf, and other sub-libraries - we want the main SDL3 static library
@@ -189,20 +200,24 @@ jobs:
         cd build
         # Find SDL3 installation (use the install path where SDL3Config.cmake should be properly configured)
         $sdl3InstallPath = "$env:TEMP\sdl3-static"
-        # Verify SDL3Config.cmake exists and check its location
+        # Verify SDL3Config.cmake exists in install directory (preferred location)
         $sdl3ConfigPath = "$sdl3InstallPath\lib\cmake\SDL3\SDL3Config.cmake"
         if (-not (Test-Path $sdl3ConfigPath)) {
-          # Try alternative location
+          # Try alternative install location
           $sdl3ConfigPath = "$sdl3InstallPath\cmake\SDL3\SDL3Config.cmake"
           if (-not (Test-Path $sdl3ConfigPath)) {
-            # Try build directory as fallback
+            Write-Host "Warning: SDL3Config.cmake not found in install directory, checking build directory"
+            Write-Host "Checking install directory structure:"
+            if (Test-Path $sdl3InstallPath) {
+              Get-ChildItem -Recurse -Path $sdl3InstallPath -Filter "*.cmake" -ErrorAction SilentlyContinue | Select-Object FullName | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            }
+            # Try build directory as last resort (but this might not work properly)
             $sdl3ConfigPath = "$env:TEMP\sdl3-static-build\build\SDL3Config.cmake"
             if (Test-Path $sdl3ConfigPath) {
+              Write-Host "Using build directory SDL3Config.cmake (may not work correctly)"
               $sdl3InstallPath = "$env:TEMP\sdl3-static-build\build"
             } else {
-              Write-Host "Error: SDL3Config.cmake not found in expected locations"
-              Write-Host "Checking install directory structure:"
-              Get-ChildItem -Recurse -Path $sdl3InstallPath -Filter "*.cmake" | Select-Object FullName | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+              Write-Host "Error: SDL3Config.cmake not found in any expected location"
               exit 1
             }
           }
@@ -260,16 +275,29 @@ jobs:
         if (Test-Path "$env:TEMP\sdl3-static\lib") {
           Get-ChildItem "$env:TEMP\sdl3-static\lib\*.lib" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
         }
-        # Ensure we're using the install path (not build path) for SDL3_DIR
-        # SDL3Config.cmake in the install directory should work better
-        $sdl3ConfigInInstall = "$env:TEMP\sdl3-static\lib\cmake\SDL3\SDL3Config.cmake"
-        if (Test-Path $sdl3ConfigInInstall) {
+        # Always prefer the install directory for SDL3_DIR
+        # The install directory should have properly configured SDL3Config.cmake
+        if ($sdl3ConfigPath -like "*sdl3-static\lib\cmake\SDL3\SDL3Config.cmake" -or $sdl3ConfigPath -like "*sdl3-static\cmake\SDL3\SDL3Config.cmake") {
           $sdl3InstallPath = "$env:TEMP\sdl3-static"
-          Write-Host "Using installed SDL3Config.cmake instead of build directory"
+          Write-Host "Using installed SDL3Config.cmake from: $sdl3ConfigPath"
+        } else {
+          Write-Host "Warning: Using build directory SDL3Config.cmake, this may cause issues"
         }
         # SDL3_ttf will find freetype automatically or we can let CMake download it
+        # Try to work around SDL3Config.cmake issues by manually setting all SDL3 variables
+        # First, ensure we have the library in the install directory
+        $installLibPath = "$env:TEMP\sdl3-static\lib\SDL3-static.lib"
+        if (-not (Test-Path $installLibPath) -and $sdl3LibPath) {
+          $installLibDir = "$env:TEMP\sdl3-static\lib"
+          if (-not (Test-Path $installLibDir)) {
+            New-Item -ItemType Directory -Force -Path $installLibDir | Out-Null
+          }
+          Copy-Item $sdl3LibPath.FullName $installLibPath -Force
+          Write-Host "Copied SDL3 library to install directory: $installLibPath"
+        }
         # Use both SDL3_DIR and manually set library/include paths to help CMake find SDL3
         # Also try setting SDL3_ROOT as an alternative
+        # Set SDL3_FOUND=TRUE manually to bypass the config file check
         $cmakeArgs = @(
           "..",
           "-G", "Visual Studio 17 2022",
@@ -279,23 +307,23 @@ jobs:
           "-DSDL3TTF_STATIC=ON",
           "-DSDL3_DIR=$sdl3InstallPath",
           "-DSDL3_ROOT=$sdl3InstallPath",
-          "-DCMAKE_PREFIX_PATH=$sdl3InstallPath"
+          "-DCMAKE_PREFIX_PATH=$sdl3InstallPath",
+          "-DSDL3_FOUND=TRUE"
         )
-        if ($sdl3LibPath) {
-          # Use the library path from install directory if available
-          $installLibPath = "$env:TEMP\sdl3-static\lib\$($sdl3LibPath.Name)"
-          if (Test-Path $installLibPath) {
-            $cmakeArgs += "-DSDL3_LIBRARY=$installLibPath"
-            $cmakeArgs += "-DSDL3_LIBRARY_DIR=$env:TEMP\sdl3-static\lib"
-          } else {
-            $cmakeArgs += "-DSDL3_LIBRARY=$($sdl3LibPath.FullName)"
-            $sdl3LibDir = Split-Path -Parent $sdl3LibPath.FullName
-            $cmakeArgs += "-DSDL3_LIBRARY_DIR=$sdl3LibDir"
-          }
+        if (Test-Path $installLibPath) {
+          $cmakeArgs += "-DSDL3_LIBRARY=$installLibPath"
+          $cmakeArgs += "-DSDL3_LIBRARY_DIR=$env:TEMP\sdl3-static\lib"
+        } elseif ($sdl3LibPath) {
+          $cmakeArgs += "-DSDL3_LIBRARY=$($sdl3LibPath.FullName)"
+          $sdl3LibDir = Split-Path -Parent $sdl3LibPath.FullName
+          $cmakeArgs += "-DSDL3_LIBRARY_DIR=$sdl3LibDir"
         }
         if (Test-Path $sdl3IncludePath) {
           $cmakeArgs += "-DSDL3_INCLUDE_DIR=$sdl3IncludePath"
         }
+        # Also set the target name that SDL3_ttf might be looking for
+        $cmakeArgs += "-DSDL3_LIBRARIES=$installLibPath"
+        Write-Host "Running CMake with args: $($cmakeArgs -join ' ')"
         & cmake $cmakeArgs
         cmake --build . --config Release
         # Try to find the library in build output (Visual Studio puts it in Release/ subdirectory)
