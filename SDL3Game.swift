@@ -88,8 +88,8 @@ class SDL3Game {
         let title = "Tetrix"
         // SDL3: SDL_CreateWindow(title, width, height, flags)
         title.withCString { cString in
-            // SDL3: Use SDL_WINDOW_HIDDEN flag (0x8) to create window hidden initially
-            window = SDL_CreateWindow(cString, windowWidth, windowHeight, 0x8)  // SDL_WINDOW_HIDDEN
+            // SDL3: Use SDL_WINDOW_HIDDEN (0x8) and SDL_WINDOW_RESIZABLE (0x20) flags
+            window = SDL_CreateWindow(cString, windowWidth, windowHeight, 0x28)  // SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
         }
         if window == nil {
             print("Failed to create window")
@@ -130,10 +130,12 @@ class SDL3Game {
         // Render initial frame while window is hidden
         render()
         
+        // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
+        _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
+        
         // Apply fullscreen state if it was saved
         if isFullscreen {
             _ = SDL_SetWindowFullscreen(window, true)
-            _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
         }
         
         // Now show the window after first frame is rendered
@@ -394,14 +396,9 @@ class SDL3Game {
         // SDL3: Use SDL_SetWindowFullscreen to toggle fullscreen state
         _ = SDL_SetWindowFullscreen(window, isFullscreen)
         
-        // Set logical presentation to scale content when fullscreen
-        if isFullscreen {
-            // Use letterbox mode to maintain aspect ratio on all platforms
-            _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
-        } else {
-            // Disable logical presentation in windowed mode - use native size
-            _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_DISABLED)
-        }
+        // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
+        // This ensures consistent scaling whether windowed, resized, snapped, or maximized
+        _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
         saveSettings()
     }
     
