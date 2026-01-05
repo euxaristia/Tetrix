@@ -190,8 +190,8 @@ class SwiftRenderer: RendererProtocol {
         DeleteObject(brush)
         
         #elseif os(macOS)
-        guard let view = view else { return }
-        view.layer?.backgroundColor = CGColor(
+        guard view != nil else { return }
+        view?.layer?.backgroundColor = CGColor(
             red: CGFloat(drawColor.r) / 255.0,
             green: CGFloat(drawColor.g) / 255.0,
             blue: CGFloat(drawColor.b) / 255.0,
@@ -218,7 +218,7 @@ class SwiftRenderer: RendererProtocol {
         DeleteObject(brush)
         
         #elseif os(macOS)
-        guard let view = view else { return }
+        guard view != nil else { return }
         let cgRect = CGRect(x: CGFloat(rect.x), y: CGFloat(rect.y), width: CGFloat(rect.width), height: CGFloat(rect.height))
         let cgColor = CGColor(
             red: CGFloat(drawColor.r) / 255.0,
@@ -252,7 +252,7 @@ class SwiftRenderer: RendererProtocol {
         DeleteObject(pen)
         
         #elseif os(macOS)
-        guard let view = view else { return }
+        guard view != nil else { return }
         let cgRect = CGRect(x: CGFloat(rect.x), y: CGFloat(rect.y), width: CGFloat(rect.width), height: CGFloat(rect.height))
         let cgColor = CGColor(
             red: CGFloat(drawColor.r) / 255.0,
@@ -275,7 +275,7 @@ class SwiftRenderer: RendererProtocol {
         // Windows GDI doesn't need explicit present
         
         #elseif os(macOS)
-        view?.setNeedsDisplay(true)
+        view?.needsDisplay = true
         
         #elseif os(Linux)
         // Placeholder - X11 implementation in progress
