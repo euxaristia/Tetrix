@@ -112,28 +112,31 @@ jobs:
         cd build
         cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF
         cmake --build . --config Release
-        # Try to find the library in build output (Visual Studio puts it in Release/ subdirectory)
-        $sdl3Lib = $null
-        # First, try to find in the build output directory
-        $buildOutputDirs = @("Release", "Release\lib", "lib", ".")
-        foreach ($dir in $buildOutputDirs) {
-          $searchPath = Join-Path $PWD $dir
-          if (Test-Path $searchPath) {
-            $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
-            if ($found) {
-              $sdl3Lib = $found
-              Write-Host "Found SDL3 library in build output: $($found.FullName)"
-              break
-            }
-          }
+        # Install SDL3 to a local directory (required for SDL3Config.cmake to work properly)
+        $sdl3InstallPath = "$env:TEMP\sdl3-static"
+        New-Item -ItemType Directory -Force -Path $sdl3InstallPath | Out-Null
+        cmake --install . --config Release --prefix $sdl3InstallPath
+        if (-not $?) {
+          Write-Host "Warning: SDL3 install failed, trying to find library in build output"
         }
-        # If not found in build output, try install (but don't fail if it fails)
+        # Try to find the library (prefer install, then build output)
+        $sdl3Lib = $null
+        if (Test-Path "$sdl3InstallPath\lib") {
+          $sdl3Lib = Get-ChildItem "$sdl3InstallPath\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+        }
+        # If not found in install, try build output
         if (-not $sdl3Lib) {
-          $sdl3InstallPath = "$env:TEMP\sdl3-static"
-          New-Item -ItemType Directory -Force -Path $sdl3InstallPath | Out-Null
-          cmake --install . --config Release --prefix $sdl3InstallPath 2>&1 | Out-Null
-          if (Test-Path "$sdl3InstallPath\lib") {
-            $sdl3Lib = Get-ChildItem "$sdl3InstallPath\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" } | Select-Object -First 1
+          $buildOutputDirs = @("Release", "Release\lib", "lib", ".")
+          foreach ($dir in $buildOutputDirs) {
+            $searchPath = Join-Path $PWD $dir
+            if (Test-Path $searchPath) {
+              $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+              if ($found) {
+                $sdl3Lib = $found
+                Write-Host "Found SDL3 library in build output: $($found.FullName)"
+                break
+              }
+            }
           }
         }
         # Copy to project root with standard name
@@ -146,7 +149,7 @@ jobs:
           Get-ChildItem -Recurse -Filter "*.lib" | Select-Object FullName | ForEach-Object { Write-Host "Found lib: $($_.FullName)" }
           exit 1
         }
-        # Copy headers (try install path first, then source directory)
+        # Copy headers (prefer install path, then source directory)
         New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\sdl3-headers" | Out-Null
         $headerSource = "$sdl3InstallPath\include\SDL3"
         if (-not (Test-Path $headerSource)) {
@@ -159,7 +162,7 @@ jobs:
         } else {
           Write-Host "Warning: SDL3 headers not found"
         }
-        Write-Host "SDL3 static library built and installed"
+        Write-Host "SDL3 static library built and installed to $sdl3InstallPath"
     
     - name: Build SDL3_ttf Static (Windows)
       if: matrix.os == 'windows-latest'
@@ -171,10 +174,59 @@ jobs:
         cd sdl3-ttf-static-build
         New-Item -ItemType Directory -Force -Path build | Out-Null
         cd build
-        # Find SDL3 installation (point to the build directory where SDL3Config.cmake is)
-        $sdl3BuildPath = "$env:TEMP\sdl3-static-build\build"
+        # Find SDL3 installation (use the install path where SDL3Config.cmake should be properly configured)
+        $sdl3InstallPath = "$env:TEMP\sdl3-static"
+        # Verify SDL3Config.cmake exists and check its location
+        $sdl3ConfigPath = "$sdl3InstallPath\lib\cmake\SDL3\SDL3Config.cmake"
+        if (-not (Test-Path $sdl3ConfigPath)) {
+          # Try alternative location
+          $sdl3ConfigPath = "$sdl3InstallPath\cmake\SDL3\SDL3Config.cmake"
+          if (-not (Test-Path $sdl3ConfigPath)) {
+            # Try build directory as fallback
+            $sdl3ConfigPath = "$env:TEMP\sdl3-static-build\build\SDL3Config.cmake"
+            if (Test-Path $sdl3ConfigPath) {
+              $sdl3InstallPath = "$env:TEMP\sdl3-static-build\build"
+            } else {
+              Write-Host "Error: SDL3Config.cmake not found in expected locations"
+              Write-Host "Checking install directory structure:"
+              Get-ChildItem -Recurse -Path $sdl3InstallPath -Filter "*.cmake" | Select-Object FullName | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+              exit 1
+            }
+          }
+        }
+        Write-Host "Using SDL3_DIR: $sdl3InstallPath"
+        Write-Host "SDL3Config.cmake found at: $sdl3ConfigPath"
+        # Find SDL3 library and include paths to help CMake
+        $sdl3LibPath = Get-ChildItem "$env:TEMP\sdl3-static\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+        if (-not $sdl3LibPath) {
+          # Try build directory
+          $sdl3LibPath = Get-ChildItem "$env:TEMP\sdl3-static-build\build\Release\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" } | Select-Object -First 1
+        }
+        $sdl3IncludePath = "$env:TEMP\sdl3-static\include"
+        if (-not (Test-Path $sdl3IncludePath)) {
+          $sdl3IncludePath = "$env:TEMP\sdl3-static-build\include"
+        }
+        Write-Host "SDL3 library: $($sdl3LibPath.FullName)"
+        Write-Host "SDL3 include: $sdl3IncludePath"
         # SDL3_ttf will find freetype automatically or we can let CMake download it
-        cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DSDL3TTF_SHARED=OFF -DSDL3TTF_STATIC=ON -DSDL3_DIR="$sdl3BuildPath"
+        # Use both SDL3_DIR and manually set library/include paths to help CMake find SDL3
+        $cmakeArgs = @(
+          "..",
+          "-G", "Visual Studio 17 2022",
+          "-A", "x64",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DSDL3TTF_SHARED=OFF",
+          "-DSDL3TTF_STATIC=ON",
+          "-DSDL3_DIR=$sdl3InstallPath",
+          "-DCMAKE_PREFIX_PATH=$sdl3InstallPath"
+        )
+        if ($sdl3LibPath) {
+          $cmakeArgs += "-DSDL3_LIBRARY=$($sdl3LibPath.FullName)"
+        }
+        if (Test-Path $sdl3IncludePath) {
+          $cmakeArgs += "-DSDL3_INCLUDE_DIR=$sdl3IncludePath"
+        }
+        & cmake $cmakeArgs
         cmake --build . --config Release
         # Try to find the library in build output (Visual Studio puts it in Release/ subdirectory)
         $sdl3ttfLib = $null
