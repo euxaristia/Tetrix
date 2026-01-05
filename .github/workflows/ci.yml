@@ -48,7 +48,7 @@ jobs:
       if: matrix.os == 'ubuntu-22.04'
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxrender-dev libxcursor-dev libxfixes-dev libxinerama-dev libxi-dev libgl1-mesa-dev libwayland-dev libdbus-1-dev libpipewire-0.3-dev libpulse-dev libasound2-dev git
+        sudo apt-get install -y build-essential cmake libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxrender-dev libxcursor-dev libxfixes-dev libxinerama-dev libxi-dev libxrandr-dev libgl1-mesa-dev libwayland-dev libdbus-1-dev libpipewire-0.3-dev libpulse-dev libasound2-dev git
         # Build SDL3 from source
         cd /tmp
         git clone --depth 1 https://github.com/libsdl-org/SDL.git sdl3-build

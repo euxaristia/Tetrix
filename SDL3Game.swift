@@ -25,6 +25,9 @@ class SDL3Game {
     private var dPadDownHeld = false
     private var dPadDownRepeatTimer: Date = Date()
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
+    private var downKeyHeld = false
+    private var downKeyRepeatTimer: Date = Date()
+    private let downKeyRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for keyboard soft drop
     private var lastDropTime: Date = Date() // Track automatic drop timing, reset when piece locks
     private var music: TetrisMusic?
     private var musicEnabled = true
@@ -174,6 +177,9 @@ class SDL3Game {
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat()
             
+            // Handle held down key for soft drop
+            handleDownKeyRepeat()
+            
         // Update music (only if enabled)
         if musicEnabled {
             music?.update()
@@ -226,6 +232,8 @@ class SDL3Game {
                 }
                 usingController = false
                 handleKeyPress(&event.key)
+            case UInt32(SDL_EVENT_KEY_UP.rawValue):
+                handleKeyRelease(&event.key)
             case UInt32(SDL_EVENT_GAMEPAD_ADDED.rawValue):
                 detectGamepad()
             case UInt32(SDL_EVENT_GAMEPAD_REMOVED.rawValue):
@@ -290,6 +298,17 @@ class SDL3Game {
         }
     }
     
+    private func handleKeyRelease(_ keyEvent: UnsafePointer<SDL_KeyboardEvent>) {
+        let scancode = keyEvent.pointee.scancode
+        
+        switch scancode {
+        case SDL_SCANCODE_S, SDL_SCANCODE_DOWN:
+            downKeyHeld = false
+        default:
+            break
+        }
+    }
+    
     private func handleKeyPress(_ keyEvent: UnsafePointer<SDL_KeyboardEvent>) {
         // SDL3: Use scancode field (SDL_Scancode enum) instead of raw
         let scancode = keyEvent.pointee.scancode
@@ -301,10 +320,15 @@ class SDL3Game {
         case SDL_SCANCODE_D, SDL_SCANCODE_RIGHT:
             engine.moveRight()
         case SDL_SCANCODE_S, SDL_SCANCODE_DOWN:
-            let couldMove = engine.moveDown()
-            // If piece locked (couldn't move), reset the automatic drop timer
-            if !couldMove {
-                lastDropTime = Date()
+            // Start holding down key for continuous movement
+            if !downKeyHeld {
+                downKeyHeld = true
+                downKeyRepeatTimer = Date()
+                // Immediate movement on first press
+                let couldMove = engine.moveDown()
+                if !couldMove {
+                    lastDropTime = Date()
+                }
             }
         case SDL_SCANCODE_W, SDL_SCANCODE_UP:
             engine.rotate()
@@ -438,6 +462,23 @@ class SDL3Game {
         if timeSinceLastAction >= dPadDownRepeatInterval {
             let couldMove = engine.moveDown()
             dPadDownRepeatTimer = Date()
+            // If piece locked (couldn't move), reset the automatic drop timer
+            // so the next piece doesn't inherit the soft drop momentum
+            if !couldMove {
+                lastDropTime = Date()
+            }
+        }
+    }
+    
+    private func handleDownKeyRepeat() {
+        guard downKeyHeld else { return }
+        
+        let now = Date()
+        let timeSinceLastAction = now.timeIntervalSince(downKeyRepeatTimer)
+        
+        if timeSinceLastAction >= downKeyRepeatInterval {
+            let couldMove = engine.moveDown()
+            downKeyRepeatTimer = Date()
             // If piece locked (couldn't move), reset the automatic drop timer
             // so the next piece doesn't inherit the soft drop momentum
             if !couldMove {
@@ -681,8 +722,11 @@ class SDL3Game {
         }
         
         // Controls hint - switch between keyboard and controller
-        // Position controls text in the side panel, aligned with board bottom
-        let controlsStartY = boardY + boardPixelHeight - 110 // Position controls in side panel
+        // Position controls text in the side panel, aligned with window bottom to ensure it fits
+        // Controller has 6 lines (120px), keyboard has 5 lines (100px), plus 20px for "Controls:" label
+        // Position from window bottom: windowHeight - (max lines * 20) - padding
+        let maxControlsHeight: Int32 = 140 // 6 lines * 20px + 20px label = 140px
+        let controlsStartY = windowHeight - maxControlsHeight - 10 // 10px padding from bottom
         drawText(x: panelX, y: controlsStartY, text: "Controls:", r: 150, g: 150, b: 150)
         if usingController && gamepad != nil {
             // Controller controls (D-pad and buttons only, no joystick)
