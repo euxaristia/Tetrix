@@ -44,21 +44,12 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
+          sudo apt-get install -y libsdl3-dev libsdl3-ttf-dev
 
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install sdl2 sdl2_ttf
-
-      - name: Install vcpkg and SDL2 (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: cmd
-        run: |
-          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-          C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg install sdl2:x64-windows-static ^
-            sdl2-ttf:x64-windows-static
+          brew install sdl3 sdl3_ttf
 
       - name: Build Release (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'
@@ -75,14 +66,7 @@ jobs:
       - name: Build Release (Windows)
         if: matrix.os == 'windows-latest'
         shell: cmd
-        env:
-          VCPKG_ROOT: C:\vcpkg
-          PKG_CONFIG_PATH: >-
-            C:\vcpkg\installed\x64-windows-static\lib\pkgconfig
-          LIB: >-
-            C:\vcpkg\installed\x64-windows-static\lib
         run: |
-          set PATH=C:\vcpkg\installed\x64-windows-static\bin;%PATH%
           swift build -c release
 
       - name: Create/Update Release and Upload Asset (Linux/macOS)

@@ -35,16 +35,16 @@ jobs:
       with:
         swift-version: "6.2"
     
-    - name: Install SDL2 (Ubuntu)
+    - name: Install SDL3 (Ubuntu)
       if: matrix.os == 'ubuntu-22.04'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
+        sudo apt-get install -y libsdl3-dev libsdl3-ttf-dev
     
-    - name: Install SDL2 (macOS)
+    - name: Install SDL3 (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install sdl2 sdl2_ttf
+        brew install sdl3 sdl3_ttf
     
     - name: Build project
       if: matrix.os == 'ubuntu-22.04'

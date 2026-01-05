@@ -96,6 +96,17 @@ class TetrisEngine {
         }
     }
     
+    func getGhostPiece() -> Tetromino? {
+        guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return nil }
+        var dropped = piece
+        
+        while board.canPlace(dropped.moved(dx: 0, dy: 1)) {
+            dropped = dropped.moved(dx: 0, dy: 1)
+        }
+        
+        return dropped
+    }
+    
     func hardDrop() {
         guard let piece = currentPiece, gameState == .playing, linesToClear.isEmpty else { return }
         var dropped = piece

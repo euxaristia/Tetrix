@@ -27,6 +27,7 @@ class SDL3Game {
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
     private var lastDropTime: Date = Date() // Track automatic drop timing, reset when piece locks
     private var music: TetrisMusic?
+    private var musicEnabled = true
     
     private let cellSize: Int32 = 30
     private let boardWidth = GameBoard.width
@@ -157,8 +158,10 @@ class SDL3Game {
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat()
             
-            // Update music
+        // Update music (only if enabled)
+        if musicEnabled {
             music?.update()
+        }
             
             // Update line clearing animation
             engine.updateLineClearing()
@@ -280,8 +283,19 @@ class SDL3Game {
             if isFullscreen {
                 toggleFullscreen()
             }
+        case SDL_SCANCODE_M:
+            toggleMusic()
         default:
             break
+        }
+    }
+    
+    private func toggleMusic() {
+        musicEnabled.toggle()
+        if musicEnabled {
+            music?.start()
+        } else {
+            music?.stop()
         }
     }
     
@@ -293,7 +307,7 @@ class SDL3Game {
         
         // Set logical presentation to scale content when fullscreen
         if isFullscreen {
-            // Use letterbox mode to maintain aspect ratio and scale to fit screen
+            // Use letterbox mode to maintain aspect ratio on all platforms
             _ = SDL_SetRenderLogicalPresentation(renderer, windowWidth, windowHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
         } else {
             // Disable logical presentation in windowed mode - use native size
@@ -422,6 +436,17 @@ class SDL3Game {
             }
         }
         
+        // Draw ghost piece (where current piece would land)
+        if let ghostPiece = engine.getGhostPiece(), let currentPiece = engine.currentPiece {
+            // Only draw ghost if it's different from current position
+            if ghostPiece.position.y != currentPiece.position.y {
+                let ghostBlocks = ghostPiece.getAbsoluteBlocks()
+                for block in ghostBlocks {
+                    drawGhostBlock(x: block.x, y: block.y, type: ghostPiece.type, boardX: boardX, boardY: boardY)
+                }
+            }
+        }
+        
         // Draw current piece
         if let piece = engine.currentPiece {
             let blocks = piece.getAbsoluteBlocks()
@@ -511,12 +536,14 @@ class SDL3Game {
             drawText(x: panelX, y: controlsStartY + 40, text: "D-Pad Dn: Drop", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 60, text: "Up/X: Rotate", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "Opt: Pause", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 100, text: "M: Music", r: 130, g: 130, b: 130)
         } else {
             // Keyboard controls
             drawText(x: panelX, y: controlsStartY + 20, text: "WASD/Arrows", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 40, text: "Space: Drop", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 60, text: "P: Pause", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "F11: Fullscreen", r: 130, g: 130, b: 130)
+            drawText(x: panelX, y: controlsStartY + 100, text: "M: Music", r: 130, g: 130, b: 130)
         }
         
         SDL_RenderPresent(renderer)
@@ -533,6 +560,18 @@ class SDL3Game {
         
         // Highlight border
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 100)
+        SDL_RenderRect(renderer, &rect)
+    }
+    
+    private func drawGhostBlock(x: Int, y: Int, type: TetrominoType, boardX: Int32, boardY: Int32) {
+        let pixelX = boardX + Int32(x) * cellSize
+        let pixelY = boardY + Int32(y) * cellSize
+        var rect = SDL_FRect(x: Float(pixelX), y: Float(pixelY), w: Float(cellSize - 2), h: Float(cellSize - 2))
+        
+        // Draw ghost piece as outline only (no fill, just border)
+        let color = getColor(type.color)
+        // Use a semi-transparent border color
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 80)
         SDL_RenderRect(renderer, &rect)
     }
     
