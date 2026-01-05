@@ -320,12 +320,7 @@ jobs:
             
             # Always append SDL3_FOUND=TRUE at the very end to override any conditional logic
             Write-Host "  Appending SDL3_FOUND=TRUE at end of file to override any conditional logic"
-            $patchText = @"
-`n`n# Force SDL3_FOUND=TRUE (patched by build script)
-# This must be at the end to override any conditional checks
-set(SDL3_FOUND TRUE)
-set(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE
-"@
+            $patchText = "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`n# This must be at the end to override any conditional checks`nset(SDL3_FOUND TRUE)`nset(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE`n"
             $configContent = $configContent.TrimEnd() + $patchText
             
             if ($configContent -ne $originalContent) {
@@ -457,11 +452,7 @@ set(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE
           $finalContent = [System.IO.File]::ReadAllText($finalConfigPath)
           # Remove any existing patch comments and add fresh one
           $finalContent = $finalContent -replace "(?s)# Force SDL3_FOUND=TRUE.*?set\(SDL3_FOUND TRUE.*?\)`n", ""
-          $finalPatchText = @"
-`n`n# Force SDL3_FOUND=TRUE (final patch before CMake)
-set(SDL3_FOUND TRUE)
-set(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE
-"@
+          $finalPatchText = "`n`n# Force SDL3_FOUND=TRUE (final patch before CMake)`nset(SDL3_FOUND TRUE)`nset(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE`n"
           $finalContent = $finalContent.TrimEnd() + $finalPatchText
           [System.IO.File]::WriteAllText($finalConfigPath, $finalContent)
           Write-Host "Final patch applied"
