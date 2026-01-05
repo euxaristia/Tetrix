@@ -124,10 +124,29 @@ jobs:
           $configPath = "$sdl3InstallPath\lib\cmake\SDL3\SDL3Config.cmake"
           if (Test-Path $configPath) {
             Write-Host "SDL3Config.cmake found in install directory: $configPath"
+            # Verify the library is in the expected location
+            $expectedLibPath = "$sdl3InstallPath\lib\SDL3-static.lib"
+            if (-not (Test-Path $expectedLibPath)) {
+              Write-Host "Warning: SDL3-static.lib not found in install lib directory"
+              Write-Host "Copying from build output..."
+              $buildLib = Get-ChildItem "$PWD\Release\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3-static\.lib$" } | Select-Object -First 1
+              if ($buildLib) {
+                Copy-Item $buildLib.FullName $expectedLibPath -Force
+                Write-Host "Copied $($buildLib.Name) to $expectedLibPath"
+              }
+            }
           } else {
             Write-Host "Warning: SDL3Config.cmake not found in install directory"
             Write-Host "Checking install directory structure:"
             Get-ChildItem -Recurse -Path $sdl3InstallPath -Filter "*.cmake" -ErrorAction SilentlyContinue | Select-Object FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
+            # Try to copy SDL3Config.cmake from build directory
+            $buildConfigPath = "$PWD\SDL3Config.cmake"
+            if (Test-Path $buildConfigPath) {
+              $installConfigDir = "$sdl3InstallPath\lib\cmake\SDL3"
+              New-Item -ItemType Directory -Force -Path $installConfigDir | Out-Null
+              Copy-Item $buildConfigPath "$installConfigDir\SDL3Config.cmake" -Force
+              Write-Host "Copied SDL3Config.cmake from build directory to install directory"
+            }
           }
         }
         # Try to find the library (prefer install, then build output)
@@ -224,23 +243,57 @@ jobs:
         }
         Write-Host "Using SDL3_DIR: $sdl3InstallPath"
         Write-Host "SDL3Config.cmake found at: $sdl3ConfigPath"
+        # Ensure library is in install directory before patching (SDL3Config.cmake needs to find it)
+        $installLibPath = "$env:TEMP\sdl3-static\lib\SDL3-static.lib"
+        if (-not (Test-Path $installLibPath)) {
+          Write-Host "Ensuring SDL3 library is in install directory..."
+          $buildLib = Get-ChildItem "$env:TEMP\sdl3-static-build\build\Release\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3-static\.lib$" } | Select-Object -First 1
+          if ($buildLib) {
+            $installLibDir = "$env:TEMP\sdl3-static\lib"
+            if (-not (Test-Path $installLibDir)) {
+              New-Item -ItemType Directory -Force -Path $installLibDir | Out-Null
+            }
+            Copy-Item $buildLib.FullName $installLibPath -Force
+            Write-Host "Copied library to install directory: $installLibPath"
+          }
+        }
         # Patch SDL3Config.cmake to force SDL3_FOUND=TRUE if it's from build directory
         # (build directory config files often don't work correctly)
         if ($sdl3ConfigPath -like "*sdl3-static-build\build\SDL3Config.cmake") {
           Write-Host "Patching build directory SDL3Config.cmake to set SDL3_FOUND=TRUE"
           if (Test-Path $sdl3ConfigPath) {
-            $configContent = Get-Content $sdl3ConfigPath -Raw
-            # Check if SDL3_FOUND is already set to FALSE and replace it, or add it at the end
-            if ($configContent -match "set\(SDL3_FOUND\s+FALSE\)") {
-              $configContent = $configContent -replace "set\(SDL3_FOUND\s+FALSE\)", "set(SDL3_FOUND TRUE)"
-              Write-Host "Replaced SDL3_FOUND=FALSE with SDL3_FOUND=TRUE"
+            # Read the entire file as a single string
+            $configContent = [System.IO.File]::ReadAllText($sdl3ConfigPath)
+            Write-Host "Original file size: $($configContent.Length) bytes"
+            
+            # Replace SDL3_FOUND=FALSE with TRUE (case-insensitive, handle various formats)
+            $originalContent = $configContent
+            $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+FALSE\s*\)", "set(SDL3_FOUND TRUE)"
+            $configContent = $configContent -replace "(?i)set\s*\(\s*SDL3_FOUND\s+OFF\s*\)", "set(SDL3_FOUND TRUE)"
+            
+            # If no replacement happened, append at the end
+            if ($configContent -eq $originalContent) {
+              Write-Host "No SDL3_FOUND found, appending to end of file"
+              $configContent = $configContent.TrimEnd() + "`n`n# Force SDL3_FOUND=TRUE (patched by build script)`nset(SDL3_FOUND TRUE)`n"
             } else {
-              # Add at the end to force it
-              $configContent = $configContent + "`nset(SDL3_FOUND TRUE)`n"
-              Write-Host "Added set(SDL3_FOUND TRUE) to end of file"
+              Write-Host "Replaced SDL3_FOUND=FALSE/OFF with TRUE"
             }
-            Set-Content -Path $sdl3ConfigPath -Value $configContent -NoNewline
+            
+            # Write the patched content
+            [System.IO.File]::WriteAllText($sdl3ConfigPath, $configContent)
             Write-Host "Patched SDL3Config.cmake successfully"
+            
+            # Verify the patch
+            $verifyContent = [System.IO.File]::ReadAllText($sdl3ConfigPath)
+            if ($verifyContent -match "(?i)set\s*\(\s*SDL3_FOUND\s+TRUE\s*\)") {
+              Write-Host "Verification: SDL3_FOUND=TRUE found in patched file"
+            } else {
+              Write-Host "Warning: Verification failed - SDL3_FOUND=TRUE not found after patching"
+              Write-Host "First 500 chars of patched file:"
+              Write-Host $verifyContent.Substring(0, [Math]::Min(500, $verifyContent.Length))
+            }
+          } else {
+            Write-Host "Error: SDL3Config.cmake not found at $sdl3ConfigPath"
           }
         }
         # Find SDL3 library and include paths to help CMake
