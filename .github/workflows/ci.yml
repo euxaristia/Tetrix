@@ -11,6 +11,8 @@ on:
     paths-ignore:
       - '*.md'
       - 'docs/**'
+  workflow_dispatch:
+    # Allow manual triggering of the workflow
 
 permissions:
   contents: write
@@ -543,26 +545,13 @@ set(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE
           exit 1
         fi
     
-    - name: Delete Existing Release (Linux - first platform)
+    - name: Upload Linux Binary Artifact
       if: matrix.os == 'ubuntu-22.04' && github.event_name == 'push'
-      run: |
-        gh release delete latest --yes || echo "Release 'latest' does not exist, will create new one"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Create/Update Release and Upload Asset (Linux)
-      if: matrix.os == 'ubuntu-22.04' && github.event_name == 'push'
-      uses: softprops/action-gh-release@v1
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: latest
-        target_commitish: ${{ github.sha }}
-        name: Latest Build
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-        files: .build/release/Tetrix
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: tetrix-linux
+        path: .build/release/Tetrix
+        retention-days: 1
     
     - name: Verify macOS Binary Before Upload
       if: matrix.os == 'macos-latest' && github.event_name == 'push'
@@ -574,22 +563,55 @@ set(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE
         fi
         echo "TetrixDarwin binary found, size: $(stat -f%z .build/release/TetrixDarwin 2>/dev/null || stat -c%s .build/release/TetrixDarwin 2>/dev/null || echo 'unknown') bytes"
     
-    - name: Create/Update Release and Upload Asset (macOS)
+    - name: Upload macOS Binary Artifact
       if: matrix.os == 'macos-latest' && github.event_name == 'push'
-      uses: softprops/action-gh-release@v1
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: latest
-        target_commitish: ${{ github.sha }}
-        name: Latest Build
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-        files: .build/release/TetrixDarwin
+        name: tetrix-macos
+        path: .build/release/TetrixDarwin
+        retention-days: 1
+    
+    - name: Upload Windows Binary Artifact
+      if: matrix.os == 'windows-latest' && github.event_name == 'push'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tetrix-windows
+        path: Tetrix-windows.zip
+        retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download Linux Binary
+      uses: actions/download-artifact@v4
+      with:
+        name: tetrix-linux
+        path: artifacts/linux
+    
+    - name: Download macOS Binary
+      uses: actions/download-artifact@v4
+      with:
+        name: tetrix-macos
+        path: artifacts/macos
+    
+    - name: Download Windows Binary
+      uses: actions/download-artifact@v4
+      with:
+        name: tetrix-windows
+        path: artifacts/windows
+    
+    - name: Delete Existing Release
+      run: |
+        gh release delete latest --yes || echo "Release 'latest' does not exist, will create new one"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Create/Update Release and Upload Asset (Windows)
-      if: matrix.os == 'windows-latest' && github.event_name == 'push'
+    - name: Create Release and Upload All Assets
       uses: softprops/action-gh-release@v1
       with:
         tag_name: latest
@@ -598,6 +620,9 @@ set(SDL3_FOUND TRUE CACHE BOOL 'Force SDL3_FOUND to TRUE') FORCE
         draft: false
         prerelease: false
         generate_release_notes: true
-        files: Tetrix-windows.zip
+        files: |
+          artifacts/linux/Tetrix
+          artifacts/macos/TetrixDarwin
+          artifacts/windows/Tetrix-windows.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
