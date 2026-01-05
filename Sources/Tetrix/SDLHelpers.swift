@@ -290,10 +290,24 @@ struct Color {
     static let blue = Color(r: 0, g: 0, b: 255)
 }
 
-// MARK: - Renderer Wrapper
+// MARK: - Renderer Protocol
+
+/// Protocol for rendering operations (unifies SDL3 and Swift-native renderers)
+protocol RendererProtocol {
+    func setDrawColor(_ color: Color)
+    func setDrawColor(r: UInt8, g: UInt8, b: UInt8, a: UInt8)
+    func clear()
+    func fillRect(_ rect: Rect)
+    func drawRect(_ rect: Rect)
+    func present()
+    func renderTexture(_ texture: Texture, at rect: Rect, source: Rect?)
+    var sdlHandle: OpaquePointer? { get }
+}
+
+// MARK: - Renderer Wrapper (SDL3)
 
 /// Swift-native renderer wrapper (encapsulates SDL renderer operations)
-class Renderer {
+class Renderer: RendererProtocol {
     private let sdlRenderer: OpaquePointer?
     
     init(sdlRenderer: OpaquePointer?) {
@@ -337,7 +351,7 @@ class Renderer {
         var destRect = rect.toSDL()
         guard let sdlTexture = texture.sdlTexture else { return }
         // SDL3 API: Convert OpaquePointer to UnsafeMutablePointer<SDL_Texture>
-        let texturePtr = unsafeBitCast(sdlTexture, to: UnsafeMutablePointer<SDL_Texture>.self)
+        let texturePtr = sdlTexture
         if let source = source {
             var srcRect = source.toSDL()
             _ = SDL_RenderTexture(sdlRenderer, texturePtr, &srcRect, &destRect)

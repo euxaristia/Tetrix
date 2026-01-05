@@ -135,7 +135,7 @@ class SwiftWindow {
 }
 
 /// Swift-native renderer class (replaces SDL_Renderer)
-class SwiftRenderer {
+class SwiftRenderer: RendererProtocol {
     #if os(Windows)
     private var hdc: HDC?
     private var hwnd: HWND?
@@ -281,6 +281,18 @@ class SwiftRenderer {
         // Placeholder - X11 implementation in progress
         _ = display  // Suppress unused variable warning
         #endif
+    }
+    
+    // MARK: - RendererProtocol Conformance
+    
+    var sdlHandle: OpaquePointer? {
+        // Swift-native renderer doesn't expose SDL handle
+        return nil
+    }
+    
+    func renderTexture(_ texture: Texture, at rect: Rect, source: Rect? = nil) {
+        // TODO: Implement texture rendering for Swift-native renderer
+        // For now, this is a placeholder
     }
     
     deinit {

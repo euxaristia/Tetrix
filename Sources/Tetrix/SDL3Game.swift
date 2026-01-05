@@ -2,8 +2,14 @@ import Foundation
 import CSDL3
 
 class SDL3Game {
-    private var window: OpaquePointer?
-    private var renderer: Renderer?
+    // Swift-native window/renderer (Windows, macOS) or SDL3 fallback (Linux)
+    #if os(Linux)
+    private var window: OpaquePointer?  // SDL3 window on Linux
+    private var renderer: RendererProtocol?     // SDL3 renderer wrapper on Linux
+    #else
+    private var swiftWindow: SwiftWindow?
+    private var renderer: RendererProtocol?  // Swift-native renderer on Windows/macOS
+    #endif
     private var font: OpaquePointer?
     private let engine: TetrisEngine
     private var running = true
@@ -52,7 +58,9 @@ class SDL3Game {
         windowWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding (20 on each side)
         windowHeight = boardPixelHeight + 40 // 40 for padding (20 on top and bottom)
         
-        // Initialize SDL subsystems
+        // Initialize platform-specific subsystems
+        #if os(Linux)
+        // Linux: Use SDL3 (handles X11/Wayland automatically)
         let initFlags = UInt32(SDL_INIT_VIDEO) | UInt32(SDL_INIT_GAMEPAD) | UInt32(SDL_INIT_AUDIO)
         let sdlResult = SDLHelper.initialize(initFlags)
         if !sdlResult.isSuccess {
@@ -60,31 +68,64 @@ class SDL3Game {
             return
         }
         
-        // Initialize music (after SDL audio subsystem is initialized)
-        music = TetrisMusic()
-        
-        // Initialize game controller subsystem and detect controllers
-        detectGamepad()
-        
         // Initialize TTF for text rendering
         let ttfResult = SDLHelper.initializeTTF()
         if !ttfResult.isSuccess {
             print("Warning: TTF_Init failed: \(ttfResult.errorMessage ?? "Unknown error"), text rendering disabled")
         }
         
-        // Create window
+        // Create SDL3 window on Linux
         let title = "Tetrix"
-        window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: 0x28)  // SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE (UInt64)
+        window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: 0x28)
         if window == nil {
             print("Failed to create window")
+            return
         }
         
-        // Create renderer using Swift wrapper
+        // Create SDL3 renderer on Linux
         if let sdlRenderer = RendererHelper.create(window: window) {
             renderer = Renderer(sdlRenderer: sdlRenderer)
         } else {
             print("Failed to create renderer")
+            return
         }
+        #else
+        // Windows/macOS: Use Swift-native window/renderer (no SDL3 needed for graphics)
+        let title = "Tetrix"
+        // Create Swift-native window
+        swiftWindow = SwiftWindow(title: title, width: windowWidth, height: windowHeight, flags: 0x28)
+        if swiftWindow == nil {
+            print("Failed to create window")
+            return
+        }
+        
+        // Create Swift-native renderer
+        if let swiftRenderer = SwiftRenderer(window: swiftWindow!) {
+            renderer = swiftRenderer
+        } else {
+            print("Failed to create renderer")
+            return
+        }
+        
+        // Still need SDL3 for gamepad and audio on Windows/macOS
+        let initFlags = UInt32(SDL_INIT_GAMEPAD) | UInt32(SDL_INIT_AUDIO)
+        let sdlResult = SDLHelper.initialize(initFlags)
+        if !sdlResult.isSuccess {
+            print("Warning: SDL_Init for gamepad/audio failed: \(sdlResult.errorMessage ?? "Unknown error")")
+        }
+        
+        // Initialize TTF for text rendering (still using SDL_ttf for now)
+        let ttfResult = SDLHelper.initializeTTF()
+        if !ttfResult.isSuccess {
+            print("Warning: TTF_Init failed: \(ttfResult.errorMessage ?? "Unknown error"), text rendering disabled")
+        }
+        #endif
+        
+        // Initialize music (uses SDL audio on all platforms for now)
+        music = TetrisMusic()
+        
+        // Initialize game controller subsystem and detect controllers
+        detectGamepad()
         
         // Try to load a default font, fallback to built-in if not available
         // On Windows, try common font paths
@@ -96,6 +137,12 @@ class SDL3Game {
         }
         if font == nil {
             font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\verdana.ttf", pointSize: 20.0)
+        }
+        #elseif os(macOS)
+        // Try macOS font paths
+        font = TTFHelper.openFont(path: "/System/Library/Fonts/Supplemental/Arial Bold.ttf", pointSize: 20.0)
+        if font == nil {
+            font = TTFHelper.openFont(path: "/Library/Fonts/Arial Bold.ttf", pointSize: 20.0)
         }
         #else
         // Try Linux font paths
@@ -115,7 +162,8 @@ class SDL3Game {
         // Render initial frame while window is hidden
         render()
         
-        // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
+        #if os(Linux)
+        // Linux: Use SDL3 logical presentation for sharp scaling
         if let sdlRenderer = renderer?.sdlHandle {
             _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: SDL_LOGICAL_PRESENTATION_LETTERBOX)
         }
@@ -130,6 +178,19 @@ class SDL3Game {
         
         // Always maximize the window on startup
         _ = SDLWindowHelper.maximize(window: window)
+        #else
+        // Windows/macOS: Use Swift-native window operations
+        // Apply fullscreen state if it was saved
+        if isFullscreen {
+            swiftWindow?.setFullscreen(true)
+        }
+        
+        // Now show the window after first frame is rendered
+        swiftWindow?.show()
+        
+        // Always maximize the window on startup
+        swiftWindow?.maximize()
+        #endif
         
         // Start playing the classic Tetris theme if music is enabled
         if musicEnabled {
@@ -143,10 +204,15 @@ class SDL3Game {
         if font != nil {
             TTF_CloseFont(font)
         }
+        #if os(Linux)
         renderer = nil
         if window != nil {
             SDL_DestroyWindow(window)
         }
+        #else
+        renderer = nil
+        swiftWindow = nil
+        #endif
         TTF_Quit()
         SDL_Quit()
     }
@@ -362,9 +428,10 @@ class SDL3Game {
     }
     
     private func toggleFullscreen() {
-        guard let window = window, let renderer = renderer else { return }
         isFullscreen.toggle()
-        // Toggle fullscreen using Swift helper
+        #if os(Linux)
+        guard let window = window, let renderer = renderer else { return }
+        // Toggle fullscreen using SDL3
         _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: isFullscreen)
         
         // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
@@ -372,6 +439,12 @@ class SDL3Game {
         if let sdlRenderer = renderer.sdlHandle {
             _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: SDL_LOGICAL_PRESENTATION_LETTERBOX)
         }
+        #else
+        guard let window = swiftWindow else { return }
+        // Toggle fullscreen using Swift-native window
+        window.setFullscreen(isFullscreen)
+        // TODO: Implement logical presentation/scaling for Swift-native renderer
+        #endif
         saveSettings()
     }
     
@@ -752,7 +825,8 @@ class SDL3Game {
             drawText(x: panelX, y: controlsStartY + 100, text: "M: Music", r: 130, g: 130, b: 130)
         }
         
-        renderer.present()
+        // Present the rendered frame
+        self.renderer?.present()
     }
     
     private func drawBlock(x: Int, y: Int, type: TetrominoType, boardX: Int32, boardY: Int32) {
@@ -808,11 +882,24 @@ class SDL3Game {
         guard let renderer = renderer else { return }
         let color = Color(r: r, g: g, b: b, a: 255)
         // Render text using Swift-native texture wrapper
+        // Note: For Swift-native renderer, we need to use its sdlHandle if available, or implement native text rendering
+        #if os(Linux)
+        // Linux: Use SDL3 renderer
         guard let texture = Texture.fromText(renderer: renderer.sdlHandle, font: font, text: text, color: color) else {
             return
         }
-        
         let destRect = Rect(x: Float(x), y: Float(y), width: texture.width, height: texture.height)
-        renderer.renderTexture(texture, at: destRect)
+        renderer.renderTexture(texture, at: destRect, source: nil)
+        #else
+        // Windows/macOS: For now, still use SDL_ttf until we implement native text rendering
+        // TODO: Implement Swift-native text rendering for Windows/macOS
+        if let sdlHandle = renderer.sdlHandle {
+            guard let texture = Texture.fromText(renderer: sdlHandle, font: font, text: text, color: color) else {
+                return
+            }
+            let destRect = Rect(x: Float(x), y: Float(y), width: texture.width, height: texture.height)
+            renderer.renderTexture(texture, at: destRect, source: nil)
+        }
+        #endif
     }
 }
