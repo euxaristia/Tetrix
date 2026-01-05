@@ -140,7 +140,7 @@ class SwiftRenderer: RendererProtocol {
     private var hdc: HDC?
     private var hwnd: HWND?
     #elseif os(macOS)
-    private var view: NSView?
+    var view: NSView?
     #elseif os(Linux)
     private var display: OpaquePointer?  // X11Display (Display*)
     private var window: UInt32 = 0  // X11Window (Window)
@@ -166,6 +166,12 @@ class SwiftRenderer: RendererProtocol {
         return nil
         #endif
     }
+    
+    #if os(Windows)
+    var hdc: HDC? {
+        return self.hdc
+    }
+    #endif
     
     func setDrawColor(_ color: Color) {
         self.drawColor = color

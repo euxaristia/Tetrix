@@ -29,9 +29,9 @@ let package = Package(
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3"),
-                .linkedLibrary("SDL3_ttf")
+                .linkedLibrary("SDL3")
                 // Note: SDL3 automatically handles both X11 and Wayland - no need to link X11 directly
+                // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
             ]
         ),
         .executableTarget(

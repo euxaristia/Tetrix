@@ -1,8 +1,6 @@
 module CSDL3 {
     // Direct SDL3 imports - no C wrapper needed
     header "include/SDL3/SDL.h"
-    header "include/SDL3_ttf/SDL_ttf.h"
     link "SDL3"
-    link "SDL3_ttf"
     export *
 }

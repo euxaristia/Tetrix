@@ -58,11 +58,7 @@ struct SDLHelper {
         return SDLResult(success)
     }
     
-    /// Initialize TTF
-    static func initializeTTF() -> SDLResult {
-        let success = TTF_Init()
-        return SDLResult(success)
-    }
+    // TTF initialization removed - using Swift-native text rendering
     
     /// Create a window with Swift string
     static func createWindow(title: String, width: Int32, height: Int32, flags: UInt64) -> OpaquePointer? {
@@ -77,23 +73,7 @@ struct SDLHelper {
     }
 }
 
-/// Helper for TTF font operations
-struct TTFHelper {
-    /// Open a font file with Swift string path
-    static func openFont(path: String, pointSize: Float) -> OpaquePointer? {
-        return path.withSDLString { cString in
-            TTF_OpenFont(cString, pointSize)
-        }
-    }
-    
-    /// Render text to a surface
-    static func renderText(font: OpaquePointer?, text: String, color: SDL_Color) -> UnsafeMutablePointer<SDL_Surface>? {
-        return text.withSDLString { cString in
-            let length = Int(text.utf8.count)
-            return TTF_RenderText_Solid(font, cString, length, color)
-        }
-    }
-}
+// TTFHelper removed - using Swift-native text rendering in SwiftTextRenderer
 
 /// Helper for SDL rendering operations
 struct SDLRenderHelper {
@@ -393,13 +373,17 @@ class Texture {
         return Texture(sdlTexture: texture, width: width, height: height)
     }
     
-    /// Create texture from text
+    /// Create texture from text (Linux only - uses SDL3 text rendering)
     static func fromText(renderer: OpaquePointer?, font: OpaquePointer?, text: String, color: Color) -> Texture? {
-        let sdlColor = color.toSDL()
-        guard let surface = TTFHelper.renderText(font: font, text: text, color: sdlColor) else {
-            return nil
-        }
-        return fromSurface(renderer: renderer, surface: surface)
+        // This method is only used on Linux where we still use SDL3
+        // On Windows/macOS, text rendering is handled natively
+        #if os(Linux)
+        // For Linux, we'll create a simple bitmap text renderer
+        // For now, return nil - text rendering will be handled differently
+        return nil
+        #else
+        return nil
+        #endif
     }
     
     deinit {

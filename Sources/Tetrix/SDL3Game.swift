@@ -10,13 +10,14 @@ class SDL3Game {
     private var swiftWindow: SwiftWindow?
     private var renderer: RendererProtocol?  // Swift-native renderer on Windows/macOS
     #endif
-    private var font: OpaquePointer?
+    // Font removed - using Swift-native text renderer
     private let engine: TetrisEngine
     private var running = true
     
     private var gamepad: Gamepad?
     private var usingController = false
     private var isFullscreen = false
+    private var textRenderer: SwiftTextRenderer?  // Swift-native text renderer (replaces TTF)
     private var dPadDownHeld = false
     private var dPadDownRepeatTimer: Date = Date()
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
@@ -68,11 +69,8 @@ class SDL3Game {
             return
         }
         
-        // Initialize TTF for text rendering
-        let ttfResult = SDLHelper.initializeTTF()
-        if !ttfResult.isSuccess {
-            print("Warning: TTF_Init failed: \(ttfResult.errorMessage ?? "Unknown error"), text rendering disabled")
-        }
+        // Initialize Swift-native text renderer (replaces SDL3_ttf)
+        // Note: Text renderer needs renderer to be set after SDL3 renderer is created
         
         // Create SDL3 window on Linux
         let title = "Tetrix"
@@ -85,6 +83,12 @@ class SDL3Game {
         // Create SDL3 renderer on Linux
         if let sdlRenderer = RendererHelper.create(window: window) {
             renderer = Renderer(sdlRenderer: sdlRenderer)
+            
+            // Initialize text renderer and set renderer
+            if let textRenderer = SwiftTextRenderer() {
+                textRenderer.setRenderer(renderer!)
+                self.textRenderer = textRenderer
+            }
         } else {
             print("Failed to create renderer")
             return
@@ -114,10 +118,21 @@ class SDL3Game {
             print("Warning: SDL_Init for gamepad/audio failed: \(sdlResult.errorMessage ?? "Unknown error")")
         }
         
-        // Initialize TTF for text rendering (still using SDL_ttf for now)
-        let ttfResult = SDLHelper.initializeTTF()
-        if !ttfResult.isSuccess {
-            print("Warning: TTF_Init failed: \(ttfResult.errorMessage ?? "Unknown error"), text rendering disabled")
+        // Initialize Swift-native text renderer (replaces SDL3_ttf)
+        #if os(Windows)
+        // Windows: Get HDC from Swift renderer
+        if let swiftRenderer = renderer as? SwiftRenderer, let hdc = swiftRenderer.hdc {
+            textRenderer = SwiftTextRenderer(hdc: hdc)
+        }
+        #elseif os(macOS)
+        // macOS: Initialize text renderer and set view
+        if let textRenderer = SwiftTextRenderer(), let swiftRenderer = renderer as? SwiftRenderer {
+            textRenderer.setView(swiftRenderer.view)
+            self.textRenderer = textRenderer
+        }
+        #endif
+        if textRenderer == nil {
+            print("Warning: Failed to initialize text renderer, text rendering disabled")
         }
         #endif
         
@@ -127,37 +142,8 @@ class SDL3Game {
         // Initialize game controller subsystem and detect controllers
         detectGamepad()
         
-        // Try to load a default font, fallback to built-in if not available
-        // On Windows, try common font paths
-        #if os(Windows)
-        // Try Windows font paths
-        font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\arial.ttf", pointSize: 20.0)
-        if font == nil {
-            font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\calibri.ttf", pointSize: 20.0)
-        }
-        if font == nil {
-            font = TTFHelper.openFont(path: "C:\\Windows\\Fonts\\verdana.ttf", pointSize: 20.0)
-        }
-        #elseif os(macOS)
-        // Try macOS font paths
-        font = TTFHelper.openFont(path: "/System/Library/Fonts/Supplemental/Arial Bold.ttf", pointSize: 20.0)
-        if font == nil {
-            font = TTFHelper.openFont(path: "/Library/Fonts/Arial Bold.ttf", pointSize: 20.0)
-        }
-        #else
-        // Try Linux font paths
-        font = TTFHelper.openFont(path: "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf", pointSize: 20.0)
-        if font == nil {
-            font = TTFHelper.openFont(path: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", pointSize: 20.0)
-        }
-        if font == nil {
-            font = TTFHelper.openFont(path: "/usr/share/fonts/TTF/liberation/LiberationSans-Bold.ttf", pointSize: 20.0)
-        }
-        #endif
-        // If no font found, we'll render without text (just colors)
-        if font == nil {
-            print("Warning: Could not load font, text rendering disabled")
-        }
+        // Font loading removed - using Swift-native text renderer
+        // Text renderer is initialized above
         
         // Render initial frame while window is hidden
         render()
@@ -201,9 +187,7 @@ class SDL3Game {
     deinit {
         gamepad?.close()
         gamepad = nil
-        if font != nil {
-            TTF_CloseFont(font)
-        }
+        textRenderer = nil
         #if os(Linux)
         renderer = nil
         if window != nil {
@@ -213,7 +197,6 @@ class SDL3Game {
         renderer = nil
         swiftWindow = nil
         #endif
-        TTF_Quit()
         SDL_Quit()
     }
     
@@ -875,31 +858,7 @@ class SDL3Game {
     }
     
     private func drawText(x: Int32, y: Int32, text: String, r: UInt8, g: UInt8, b: UInt8) {
-        guard font != nil else {
-            return
-        }
-        
-        guard let renderer = renderer else { return }
-        let color = Color(r: r, g: g, b: b, a: 255)
-        // Render text using Swift-native texture wrapper
-        // Note: For Swift-native renderer, we need to use its sdlHandle if available, or implement native text rendering
-        #if os(Linux)
-        // Linux: Use SDL3 renderer
-        guard let texture = Texture.fromText(renderer: renderer.sdlHandle, font: font, text: text, color: color) else {
-            return
-        }
-        let destRect = Rect(x: Float(x), y: Float(y), width: texture.width, height: texture.height)
-        renderer.renderTexture(texture, at: destRect, source: nil)
-        #else
-        // Windows/macOS: For now, still use SDL_ttf until we implement native text rendering
-        // TODO: Implement Swift-native text rendering for Windows/macOS
-        if let sdlHandle = renderer.sdlHandle {
-            guard let texture = Texture.fromText(renderer: sdlHandle, font: font, text: text, color: color) else {
-                return
-            }
-            let destRect = Rect(x: Float(x), y: Float(y), width: texture.width, height: texture.height)
-            renderer.renderTexture(texture, at: destRect, source: nil)
-        }
-        #endif
+        guard let textRenderer = textRenderer else { return }
+        textRenderer.drawText(text, at: x, y: y, color: (r: r, g: g, b: b))
     }
 }
