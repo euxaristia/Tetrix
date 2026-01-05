@@ -120,9 +120,16 @@ jobs:
           Write-Host "Warning: SDL3 install failed, trying to find library in build output"
         }
         # Try to find the library (prefer install, then build output)
+        # Exclude test, ttf, and other sub-libraries - we want the main SDL3 static library
         $sdl3Lib = $null
         if (Test-Path "$sdl3InstallPath\lib") {
-          $sdl3Lib = Get-ChildItem "$sdl3InstallPath\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+          $sdl3Lib = Get-ChildItem "$sdl3InstallPath\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { 
+            $_.Name -match "^SDL3" -and 
+            $_.Name -notmatch "SDL3_ttf" -and 
+            $_.Name -notmatch "SDL3_test" -and 
+            $_.Name -notmatch "\.dll\.lib$" -and
+            ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+          } | Select-Object -First 1
         }
         # If not found in install, try build output
         if (-not $sdl3Lib) {
@@ -130,7 +137,13 @@ jobs:
           foreach ($dir in $buildOutputDirs) {
             $searchPath = Join-Path $PWD $dir
             if (Test-Path $searchPath) {
-              $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+              $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { 
+                $_.Name -match "^SDL3" -and 
+                $_.Name -notmatch "SDL3_ttf" -and 
+                $_.Name -notmatch "SDL3_test" -and 
+                $_.Name -notmatch "\.dll\.lib$" -and
+                ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+              } | Select-Object -First 1
               if ($found) {
                 $sdl3Lib = $found
                 Write-Host "Found SDL3 library in build output: $($found.FullName)"
@@ -197,19 +210,50 @@ jobs:
         Write-Host "Using SDL3_DIR: $sdl3InstallPath"
         Write-Host "SDL3Config.cmake found at: $sdl3ConfigPath"
         # Find SDL3 library and include paths to help CMake
-        $sdl3LibPath = Get-ChildItem "$env:TEMP\sdl3-static\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" -and $_.Name -notmatch "\.dll\.lib$" } | Select-Object -First 1
+        # Exclude test, ttf, and other sub-libraries - we want the main SDL3 static library
+        $sdl3LibPath = Get-ChildItem "$env:TEMP\sdl3-static\lib\*.lib" -ErrorAction SilentlyContinue | Where-Object { 
+          $_.Name -match "^SDL3" -and 
+          $_.Name -notmatch "SDL3_ttf" -and 
+          $_.Name -notmatch "SDL3_test" -and 
+          $_.Name -notmatch "\.dll\.lib$" -and
+          ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+        } | Select-Object -First 1
         if (-not $sdl3LibPath) {
-          # Try build directory
-          $sdl3LibPath = Get-ChildItem "$env:TEMP\sdl3-static-build\build\Release\*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "SDL3_ttf" } | Select-Object -First 1
+          # Try build directory - look in Release subdirectory
+          $buildDirs = @("Release", "Release\lib", "lib", ".")
+          foreach ($dir in $buildDirs) {
+            $searchPath = Join-Path "$env:TEMP\sdl3-static-build\build" $dir
+            if (Test-Path $searchPath) {
+              $found = Get-ChildItem "$searchPath\*.lib" -ErrorAction SilentlyContinue | Where-Object { 
+                $_.Name -match "^SDL3" -and 
+                $_.Name -notmatch "SDL3_ttf" -and 
+                $_.Name -notmatch "SDL3_test" -and 
+                $_.Name -notmatch "\.dll\.lib$" -and
+                ($_.Name -match "^SDL3static\.lib$" -or $_.Name -match "^SDL3\.lib$" -or $_.Name -match "^SDL3staticd\.lib$")
+              } | Select-Object -First 1
+              if ($found) {
+                $sdl3LibPath = $found
+                break
+              }
+            }
+          }
         }
         $sdl3IncludePath = "$env:TEMP\sdl3-static\include"
         if (-not (Test-Path $sdl3IncludePath)) {
           $sdl3IncludePath = "$env:TEMP\sdl3-static-build\include"
         }
-        Write-Host "SDL3 library: $($sdl3LibPath.FullName)"
+        if ($sdl3LibPath) {
+          Write-Host "SDL3 library: $($sdl3LibPath.FullName)"
+        } else {
+          Write-Host "Warning: SDL3 library not found, SDL3_ttf build may fail"
+        }
         Write-Host "SDL3 include: $sdl3IncludePath"
+        # List all libraries found for debugging
+        Write-Host "All SDL3 libraries found:"
+        Get-ChildItem "$env:TEMP\sdl3-static\lib\*.lib" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
         # SDL3_ttf will find freetype automatically or we can let CMake download it
         # Use both SDL3_DIR and manually set library/include paths to help CMake find SDL3
+        # Also try setting SDL3_ROOT as an alternative
         $cmakeArgs = @(
           "..",
           "-G", "Visual Studio 17 2022",
@@ -218,10 +262,14 @@ jobs:
           "-DSDL3TTF_SHARED=OFF",
           "-DSDL3TTF_STATIC=ON",
           "-DSDL3_DIR=$sdl3InstallPath",
+          "-DSDL3_ROOT=$sdl3InstallPath",
           "-DCMAKE_PREFIX_PATH=$sdl3InstallPath"
         )
         if ($sdl3LibPath) {
           $cmakeArgs += "-DSDL3_LIBRARY=$($sdl3LibPath.FullName)"
+          # Also try setting the library directory
+          $sdl3LibDir = Split-Path -Parent $sdl3LibPath.FullName
+          $cmakeArgs += "-DSDL3_LIBRARY_DIR=$sdl3LibDir"
         }
         if (Test-Path $sdl3IncludePath) {
           $cmakeArgs += "-DSDL3_INCLUDE_DIR=$sdl3IncludePath"
