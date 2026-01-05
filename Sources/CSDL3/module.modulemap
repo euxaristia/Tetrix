@@ -1,6 +1,8 @@
 module CSDL3 {
-    header "CSDL3.h"
+    // Direct SDL3 imports - no C wrapper needed
+    header "include/SDL3/SDL.h"
+    header "include/SDL3_ttf/SDL_ttf.h"
     link "SDL3"
-    // SDL3_ttf linking is handled in Package.swift
+    link "SDL3_ttf"
     export *
 }

@@ -17,6 +17,8 @@ let package = Package(
         .target(
             name: "CSDL3",
             path: "Sources/CSDL3",
+            // This is now a C module (via module.modulemap) but with no C source files
+            // All C code has been removed, only headers remain for interop
             cSettings: [
                 .headerSearchPath("include"),
                 // Windows: Add header path for statically built SDL3
