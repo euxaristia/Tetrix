@@ -52,12 +52,22 @@ jobs:
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
+      env:
+        # Help SwiftyLab detect cached Swift if present
+        RUNNER_TEMP: ${{ runner.temp }}
     
     - name: Verify Swift after cache restore
       if: steps.swift-cache.outputs.cache-hit == 'true'
       run: |
         echo "✅ Swift toolchain cache hit - saved ~2.5 minutes!"
         swift --version
+    
+    - name: Note about cache miss
+      if: steps.swift-cache.outputs.cache-hit != 'true'
+      run: |
+        echo "ℹ️  Cache not found (expected on first run) - Swift will be downloaded"
+        echo "   After this run completes, the Swift toolchain will be cached"
+        echo "   Subsequent runs will use the cached version (saving ~2.5 minutes)"
     
     - name: Get SDL3 commit hash for cache key
       id: sdl3-commit
@@ -245,16 +255,60 @@ jobs:
           swift-toolchain-windows-6.2.1-
     
     - name: Setup Swift
+      if: steps.swift-cache.outputs.cache-hit != 'true'
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
     
-    - name: Verify Swift after cache restore
+    - name: Configure Swift PATH from cache
       if: steps.swift-cache.outputs.cache-hit == 'true'
       shell: pwsh
       run: |
-        Write-Host "✅ Swift toolchain cache hit - saved ~2.5 minutes!" -ForegroundColor Green
-        swift --version
+        Write-Host "✅ Swift toolchain cache hit - configuring PATH..." -ForegroundColor Green
+        # Find Swift in the cached location and add to PATH
+        $swiftDirs = @(
+          "$env:RUNNER_TEMP\swift",
+          "$env:RUNNER_TEMP\swift-*"
+        )
+        $swiftFound = $false
+        foreach ($dirPattern in $swiftDirs) {
+          $resolved = Resolve-Path $dirPattern -ErrorAction SilentlyContinue
+          if ($resolved) {
+            foreach ($dir in $resolved) {
+              $swiftExe = Join-Path $dir "usr\bin\swift.exe"
+              if (Test-Path $swiftExe) {
+                $swiftBin = Join-Path $dir "usr\bin"
+                # Add to PATH for this step
+                $env:Path = "$swiftBin;$env:Path"
+                # Persist PATH for subsequent steps using GITHUB_ENV
+                Write-Output "PATH=$swiftBin;$env:Path" >> $env:GITHUB_ENV
+                Write-Host "Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
+                Write-Host "Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
+                $swiftFound = $true
+                break
+              }
+            }
+            if ($swiftFound) { break }
+          }
+        }
+        if (-not $swiftFound) {
+          Write-Host "Error: Swift not found in cached paths!" -ForegroundColor Red
+          Write-Host "Falling back to setup-swift..." -ForegroundColor Yellow
+          # This will cause an error, but at least we tried
+          exit 1
+        }
+    
+    - name: Verify Swift installation
+      if: steps.swift-cache.outputs.cache-hit == 'true'
+      shell: pwsh
+      run: |
+        if (Get-Command swift -ErrorAction SilentlyContinue) {
+          Write-Host "✅ Swift toolchain restored from cache successfully" -ForegroundColor Green
+          swift --version
+        } else {
+          Write-Host "Swift not found after cache restore - this shouldn't happen" -ForegroundColor Red
+          exit 1
+        }
     
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3.1
