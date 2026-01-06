@@ -37,10 +37,27 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Cache Swift toolchain
+      uses: actions/cache@v4
+      id: swift-cache
+      with:
+        path: |
+          ${{ runner.temp }}/swift
+          ${{ runner.temp }}/swift-*
+        key: swift-toolchain-linux-6.2.1-${{ runner.os }}
+        restore-keys: |
+          swift-toolchain-linux-6.2.1-
+    
     - name: Setup Swift
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
+    
+    - name: Verify Swift after cache restore
+      if: steps.swift-cache.outputs.cache-hit == 'true'
+      run: |
+        echo "✅ Swift toolchain cache hit - saved ~2.5 minutes!"
+        swift --version
     
     - name: Get SDL3 commit hash for cache key
       id: sdl3-commit
