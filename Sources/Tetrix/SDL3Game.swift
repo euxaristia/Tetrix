@@ -477,8 +477,9 @@ class SDL3Game {
         // Pump events from OS into SDL's queue first - critical for input responsiveness
         // Always pump every frame to ensure no input is missed (works on all platforms with SDL3)
         SDLEventHelper.pumpEvents()
-        // Flush analog events immediately after pumping to prevent queue buildup
-        if usingController {
+        // Flush analog events immediately after pumping when NOT using controller to prevent queue buildup
+        // This ensures keyboard events aren't delayed by analog stick events from a connected gamepad
+        if !usingController {
             SDLEventHelper.flushAnalogEvents()
         }
         handleEventsNoPump()
@@ -486,23 +487,29 @@ class SDL3Game {
     
     private func handleEventsNoPump() {
         // Poll for events using Swift-native event system
-        // Process events efficiently - limit to prevent controller event flooding
-        // Analog stick events are now filtered out in EventPoller, so we can process more button events
+        // Process events efficiently - prioritize keyboard input responsiveness
         var eventsProcessed = 0
-        let maxEvents = usingController ? 10 : 50  // More events when controller is active since analog sticks are filtered
-        while let event = EventPoller.poll() {
-            eventsProcessed += 1
-            // Limit to prevent infinite loops and controller event flooding
-            if eventsProcessed >= maxEvents { 
-                // If we hit the limit, flush remaining analog events to prevent queue buildup
-                if usingController {
-                    SDLEventHelper.flushAnalogEvents()
-                }
-                break 
+        // Increase max events for keyboard to ensure responsiveness even if analog events flood queue
+        let maxEvents = usingController ? 10 : 100  // Higher limit for keyboard mode
+        
+        while true {
+            // Always flush analog events first when not using controller to prevent queue buildup
+            if !usingController {
+                SDLEventHelper.flushAnalogEvents()
             }
+            
+            guard let event = EventPoller.poll() else {
+                // No more events available
+                break
+            }
+            
+            eventsProcessed += 1
+            
+            // Process the event immediately
             switch event {
             case .quit:
                 running = false
+                return  // Exit immediately on quit
             case .keyDown(let keyCode, let isRepeat):
                 if !usingController {
                     // Only show cursor when keyboard is first used
@@ -541,6 +548,15 @@ class SDL3Game {
             case .windowFocusGained:
                 // Window regained focus - game stays paused, user can press ESC to resume
                 // Music will resume when user manually unpauses if music is enabled
+                break
+            }
+            
+            // Limit to prevent infinite loops
+            if eventsProcessed >= maxEvents {
+                // If we hit the limit, flush remaining analog events to prevent queue buildup
+                if usingController {
+                    SDLEventHelper.flushAnalogEvents()
+                }
                 break
             }
         }
