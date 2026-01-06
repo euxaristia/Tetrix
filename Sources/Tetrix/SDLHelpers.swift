@@ -254,6 +254,7 @@ struct SDLEventHelper {
     
     /// Get keyboard event scancode (Swift wrapper for cleaner access)
     static func getScancode(from keyEvent: UnsafePointer<SDL_KeyboardEvent>) -> SDL_Scancode {
+        // scancode is already SDL_Scancode in the original headers
         return keyEvent.pointee.scancode
     }
     

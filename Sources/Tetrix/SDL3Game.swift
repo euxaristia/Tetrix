@@ -349,10 +349,8 @@ class SDL3Game {
         let startTime = getCurrentTime()
         lastDropTime = startTime // Initialize drop timer
         var lastFrameTime = startTime
-        var lastPumpTime = startTime
         let targetFPS = 60.0
         let frameTime = 1.0 / targetFPS
-        let pumpInterval = 1.0 / 120.0  // Pump events at 120Hz max (every ~8ms) to avoid controller lag
         
         // Simple, fast game loop - direct access, no threading overhead
         while running {
