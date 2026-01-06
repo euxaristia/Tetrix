@@ -654,7 +654,6 @@ jobs:
       needs.build-windows.result == 'success'
     steps:
     - name: Checkout code
-    - name: Checkout code
       uses: actions/checkout@v4
     
     - name: Download Linux Binary
