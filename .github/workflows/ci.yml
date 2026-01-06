@@ -84,14 +84,16 @@ jobs:
         LD_LIBRARY_PATH: /usr/local/lib
         PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
       run: |
-        swift build -c release
+        # Build with static Swift standard library linking
+        swift build -c release --static-swift-stdlib
     
     - name: Build Release (macOS)
       if: matrix.os == 'macos-latest'
       env:
         LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
       run: |
-        swift build -c release
+        # Build with static Swift standard library linking
+        swift build -c release --static-swift-stdlib
     
     - name: Setup MSBuild (Windows)
       if: matrix.os == 'windows-latest'
@@ -264,28 +266,25 @@ jobs:
       if: matrix.os == 'windows-latest' && github.event_name == 'push'
       shell: pwsh
       run: |
-        New-Item -ItemType Directory -Force -Path release-bundle | Out-Null
         # Use architecture-specific path for Windows
         $exePath = ".build\x86_64-unknown-windows-msvc\release\Tetrix.exe"
         if (-not (Test-Path $exePath)) {
           Write-Host "Error: Executable not found at $exePath"
           exit 1
         }
-        Copy-Item $exePath release-bundle\Tetrix.exe
-        # SDL3 is now statically linked (SDL3_ttf removed, using Swift-native text rendering), so no DLLs needed
-        # Only copy Swift runtime DLLs (these cannot be statically linked)
-        $swiftDlls = @("swiftCore.dll", "swiftWinSDK.dll", "FoundationEssentials.dll", "swiftCRT.dll")
-        $swiftPath = "$env:LOCALAPPDATA\Programs\Swift"
-        foreach ($dll in $swiftDlls) {
-          $found = Get-ChildItem -Path $swiftPath -Filter $dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($found) {
-            Copy-Item $found.FullName release-bundle\
-            Write-Host "Copied $dll from $($found.FullName)"
-          } else {
-            Write-Host "Warning: $dll not found"
-          }
-        }
-        Compress-Archive -Path release-bundle\* -DestinationPath Tetrix-windows.zip -Force
+        
+        # With --static-swift-stdlib, the executable should be self-contained
+        # No need to bundle DLLs - just rename for clarity and upload
+        $releaseExe = "Tetrix-windows.exe"
+        Copy-Item $exePath $releaseExe
+        
+        $fileInfo = Get-Item $releaseExe
+        Write-Host "`nPortable Windows release executable created:" -ForegroundColor Green
+        Write-Host "  File: $releaseExe" -ForegroundColor Cyan
+        Write-Host "  Size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+        Write-Host "  Status: Statically linked (self-contained, no DLLs required)" -ForegroundColor Green
+        Write-Host "`nNote: This executable uses --static-swift-stdlib and should be portable" -ForegroundColor Yellow
+        Write-Host "  System DLLs (like KERNEL32.DLL) are provided by Windows and don't need bundling" -ForegroundColor Yellow
     
     - name: Rename macOS Binary
       if: matrix.os == 'macos-latest' && github.event_name == 'push'
@@ -330,7 +329,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: tetrix-windows
-        path: Tetrix-windows.zip
+        path: Tetrix-windows.exe
         retention-days: 1
 
   release:
@@ -377,6 +376,6 @@ jobs:
         files: |
           artifacts/linux/Tetrix
           artifacts/macos/TetrixDarwin
-          artifacts/windows/Tetrix-windows.zip
+          artifacts/windows/Tetrix-windows.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

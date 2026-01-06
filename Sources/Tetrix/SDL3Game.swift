@@ -402,7 +402,13 @@ class SDL3Game {
         let startTime = getCurrentTime()
         lastDropTime = startTime // Initialize drop timer
         var lastFrameTime = startTime
+        #if DEBUG
+        // Skip frame rate limiting when debugging - debugger overhead already slows things down
+        // This ensures maximum responsiveness even when debugger is attached
+        let targetFPS = 1000.0  // Effectively unlimited
+        #else
         let targetFPS = 60.0
+        #endif
         let frameTime = 1.0 / targetFPS
         
         // Simple, fast game loop - process events continuously for responsive input
@@ -437,13 +443,9 @@ class SDL3Game {
                 }
             }
             
-            // Process events multiple times per loop iteration for maximum responsiveness
-            // This is especially important when debugging, as the debugger can cause delays
-            // Process events up to 3 times per iteration to ensure we catch all input
-            // Even when debugger causes delays between loop iterations
-            for _ in 0..<3 {
-                handleEvents()
-            }
+            // Process events - in debug mode, only process once per loop to reduce overhead
+            // Debugger already slows things down, so doing multiple passes doesn't help
+            handleEvents()
             
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat(now: now)
@@ -459,6 +461,25 @@ class SDL3Game {
                 SDLCursorHelper.show()
             }
             
+            #if DEBUG
+            // In debug mode, minimize work - debugger overhead is unavoidable
+            // Only do essential updates, skip rendering unless needed
+            let dropInterval = getDropInterval()
+            if now - lastDropTime >= dropInterval {
+                engine.update()
+                lastDropTime = now
+                // Only render when game state actually changes
+                render()
+            }
+            // Skip music updates entirely in debug mode
+            // Skip line clearing animation updates entirely in debug mode (animation still completes, just slower)
+            // Don't update line clearing in debug - let it happen naturally on next update
+            
+            // Yield to allow Windows to process window messages
+            // Use longer sleep in debug mode to reduce CPU usage and let debugger catch up
+            PlatformHelper.sleep(milliseconds: 5)  // 5ms sleep to reduce debugger overhead
+            lastFrameTime = now
+            #else
             // Update music (only if enabled)
             if musicEnabled {
                 music?.update()
@@ -479,6 +500,7 @@ class SDL3Game {
                 render()
                 lastFrameTime = now
             }
+            #endif
             // Events are processed continuously above, so input is never delayed by render timing
         }
     }
