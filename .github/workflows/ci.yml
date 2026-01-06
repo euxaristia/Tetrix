@@ -320,7 +320,7 @@ jobs:
           ${{ runner.temp }}/swiftpm-*
           ${{ env.LOCALAPPDATA }}/Programs/swift
           ${{ env.ProgramFiles }}/swift
-          ${{ env.ProgramFiles(x86) }}/swift
+          C:/Program Files (x86)/swift
           ${{ env.USERPROFILE }}/.swift
           ${{ env.USERPROFILE }}/swift
         key: swift-toolchain-windows-6.2.1-${{ runner.os }}
