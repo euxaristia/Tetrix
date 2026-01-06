@@ -28,3 +28,14 @@ docs/
 
 # Scripts (not needed for indexing)
 scripts/
+
+# IDE files (but allow .vscode/settings.json for configuration)
+.idea/
+*.swp
+*.swo
+*~
+
+# Swift build artifacts (already in .build but be explicit)
+.build/
+.swiftpm/
+Package.resolved

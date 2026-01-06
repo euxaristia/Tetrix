@@ -13,11 +13,19 @@
         "**/node_modules/**": true,
         "**/.git/objects/**": true,
         "**/.git/subtree-cache/**": true,
-        "**/build/**": true
+        "**/build/**": true,
+        "**/*.o": true,
+        "**/*.a": true,
+        "**/*.so": true,
+        "**/*.dylib": true,
+        "**/*.dll": true,
+        "**/*.lib": true,
+        "**/.idea/**": true
     },
     "files.exclude": {
         "**/.build": true,
-        "**/.swiftpm": true
+        "**/.swiftpm": true,
+        "**/.idea": true
     },
     "search.exclude": {
         "**/.build": true,
@@ -65,8 +73,15 @@
     // Disable Git auto-refresh if not needed
     "git.autoRefresh": false,
     "git.enabled": true,
+    "git.autorefresh": false,
     
     // TypeScript/JavaScript (if not using, disable)
     "typescript.disableAutomaticTypeAcquisition": true,
-    "javascript.disableAutomaticTypeAcquisition": true
+    "javascript.disableAutomaticTypeAcquisition": true,
+    "typescript.suggest.autoImports": false,
+    "javascript.suggest.autoImports": false,
+    
+    // Additional performance optimizations
+    "problems.showCurrentInStatus": false,
+    "editor.bracketPairColorization.enabled": false
 }

@@ -371,10 +371,16 @@ class SDL3Game {
             let now = getCurrentTime()
             
             // Only pump events periodically to avoid performance issues with controllers
-            // When controller is active, skip pumping entirely - it's too slow
+            // When controller is active, pump less frequently (every 50ms) for button responsiveness
+            // but not every frame to avoid analog stick event flooding
             if usingController {
-                // With controller: never pump, just poll existing queue and flush analog events
-                handleEventsNoPump()
+                // With controller: pump every 50ms for button events, flush analog events
+                if now - lastPumpTime >= 0.05 {
+                    handleEvents()
+                    lastPumpTime = now
+                } else {
+                    handleEventsNoPump()
+                }
             } else {
                 // Without controller: pump periodically for window responsiveness
                 if now - lastPumpTime >= pumpInterval {
@@ -426,14 +432,11 @@ class SDL3Game {
     
     private func handleEvents() {
         // Pump events from OS into SDL's queue first - critical for window responsiveness on Linux
-        // Skip pumping entirely when controller is active - it's too slow and causes lag
+        // When controller is active, pump less frequently but still pump for button responsiveness
         #if os(Linux)
-        if !usingController {
-            // Only pump if no controller - pumping is very slow with controllers
-            SDLEventHelper.pumpEvents()
-        } else {
-            // With controller, don't pump at all - just flush analog events from existing queue
-            // SDL will still receive button events, but we avoid the expensive pump operation
+        SDLEventHelper.pumpEvents()
+        // Flush analog events immediately after pumping to prevent queue buildup
+        if usingController {
             SDLEventHelper.flushAnalogEvents()
         }
         #endif
@@ -445,7 +448,7 @@ class SDL3Game {
         // Process events efficiently - limit to prevent controller event flooding
         // Analog stick events are now filtered out in EventPoller, so we can process more button events
         var eventsProcessed = 0
-        let maxEvents = usingController ? 3 : 50  // Very few events when controller is active (analog sticks filtered)
+        let maxEvents = usingController ? 10 : 50  // More events when controller is active since analog sticks are filtered
         while let event = EventPoller.poll() {
             eventsProcessed += 1
             // Limit to prevent infinite loops and controller event flooding
