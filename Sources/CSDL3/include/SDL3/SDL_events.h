@@ -59,7 +59,7 @@ typedef enum SDL_EventType
     SDL_EVENT_ENUM_PADDING = 0x7FFFFFFF
 } SDL_EventType;
 
-/* Common event fields */
+/* Common event fields - must match SDL3 binary layout exactly */
 typedef struct SDL_CommonEvent
 {
     Uint32 type;
@@ -67,7 +67,7 @@ typedef struct SDL_CommonEvent
     Uint64 timestamp;
 } SDL_CommonEvent;
 
-/* Window event */
+/* Window event - must match SDL3 binary layout exactly */
 typedef struct SDL_WindowEvent
 {
     SDL_EventType type;
@@ -78,20 +78,22 @@ typedef struct SDL_WindowEvent
     Sint32 data2;
 } SDL_WindowEvent;
 
-/* Keyboard event */
+/* Keyboard event - must match SDL3 binary layout exactly */
+/* Field order and sizes must match SDL3 library's structure */
 typedef struct SDL_KeyboardEvent
 {
-    SDL_EventType type;
-    Uint32 reserved;
-    Uint64 timestamp;
-    SDL_WindowID windowID;
-    SDL_KeyboardID which;
-    SDL_Scancode scancode;
-    SDL_Keycode key;
-    SDL_Keymod mod;
-    Uint16 raw;
-    bool down;
-    bool repeat;
+    SDL_EventType type;       /* Uint32 - 4 bytes */
+    Uint32 reserved;          /* 4 bytes */
+    Uint64 timestamp;         /* 8 bytes - offset 8 */
+    SDL_WindowID windowID;    /* Uint32 - 4 bytes - offset 16 */
+    SDL_KeyboardID which;     /* Uint32 - 4 bytes - offset 20 */
+    SDL_Scancode scancode;    /* enum (int) - 4 bytes - offset 24 */
+    SDL_Keycode key;          /* Uint32 - 4 bytes - offset 28 */
+    SDL_Keymod mod;           /* Uint16 - 2 bytes - offset 32 */
+    Uint16 raw;               /* 2 bytes - offset 34 */
+    bool down;                /* 1 byte - offset 36 */
+    bool repeat;              /* 1 byte - offset 37 */
+    /* Padding to ensure proper alignment */
 } SDL_KeyboardEvent;
 
 /* Gamepad axis event */
@@ -136,21 +138,26 @@ typedef struct SDL_QuitEvent
     Uint64 timestamp;
 } SDL_QuitEvent;
 
-/* Main event union - only includes types used in Tetrix */
+/* Main event union - must match SDL3 binary layout exactly */
+/* All union members start at offset 0 and overlap in memory */
 typedef union SDL_Event
 {
-    Uint32 type;
-    SDL_CommonEvent common;
-    SDL_WindowEvent window;
-    SDL_KeyboardEvent key;
-    SDL_GamepadAxisEvent gaxis;
-    SDL_GamepadButtonEvent gbutton;
-    SDL_GamepadDeviceEvent gdevice;
-    SDL_QuitEvent quit;
+    Uint32 type;                              /* Event type - shared by all events */
+    SDL_CommonEvent common;                   /* Common event data */
+    SDL_WindowEvent window;                   /* Window event data */
+    SDL_KeyboardEvent key;                    /* Keyboard event data */
+    SDL_GamepadAxisEvent gaxis;               /* Gamepad axis event data */
+    SDL_GamepadButtonEvent gbutton;           /* Gamepad button event data */
+    SDL_GamepadDeviceEvent gdevice;           /* Gamepad device event data */
+    SDL_QuitEvent quit;                       /* Quit event data */
     
-    /* Padding to ensure ABI compatibility */
+    /* Padding to ensure union is exactly 128 bytes - SDL3 ABI requirement */
+    /* This must match the actual SDL3 library's union size */
     Uint8 padding[128];
 } SDL_Event;
+
+/* Verify union size matches SDL3 expectation (128 bytes) */
+SDL_COMPILE_TIME_ASSERT(SDL_Event, sizeof(SDL_Event) == 128);
 
 /* Event functions */
 extern SDL_DECLSPEC void SDLCALL SDL_PumpEvents(void);
