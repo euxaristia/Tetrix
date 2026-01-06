@@ -44,15 +44,20 @@
     "sourcekit-lsp.toolchainPath": "/usr/lib/swift",
     // Suppress notifications/warnings (debugging works, so toolchain is fine)
     "swift.showNotifications": false,
+    "swift.diagnostics.enable": false,
+    "sourcekit-lsp.serverArguments": ["--log-level", "error"],
     
-    // Editor performance
-    "editor.semanticHighlighting.enabled": true,
-    "editor.inlineSuggest.enabled": true,
+    // Editor performance - disabled to reduce keyboard lag
+    "editor.semanticHighlighting.enabled": false,
+    "editor.inlineSuggest.enabled": false,
     "editor.quickSuggestions": {
-        "other": true,
+        "other": false,
         "comments": false,
         "strings": false
     },
+    "editor.suggestOnTriggerCharacters": false,
+    "editor.parameterHints.enabled": false,
+    "editor.hover.enabled": false,
     
     // Disable unnecessary features that can cause lag
     "editor.formatOnSave": false,
@@ -70,10 +75,9 @@
     // Reduce auto-save frequency
     "files.autoSave": "off",
     
-    // Disable Git auto-refresh if not needed
-    "git.autoRefresh": false,
+    // Git settings - auto-refresh enabled for git panel updates
+    "git.autoRefresh": true,
     "git.enabled": true,
-    "git.autorefresh": false,
     
     // TypeScript/JavaScript (if not using, disable)
     "typescript.disableAutomaticTypeAcquisition": true,

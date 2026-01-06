@@ -57,6 +57,7 @@ class SDL3Game {
     private var musicEnabled = true
     private var highScore: Int = 0
     private let settingsManager = SettingsManager.shared
+    private var windowShown = false  // Track if window has been shown
     
     private let cellSize: Int32 = 30
     private let boardWidth = GameBoard.width
@@ -100,27 +101,13 @@ class SDL3Game {
             print("Note: Some SDL subsystems already initialized (flags: 0x\(String(wasInit, radix: 16)))")
         }
         
-        // Prefer Wayland if available (avoid X11 symbol issues)
-        // Check if SDL_VIDEODRIVER is already set
+        // Let SDL3 auto-detect the video driver (don't force X11 or Wayland)
+        // The crash might be related to forcing a specific driver
         let currentDriver = ProcessInfo.processInfo.environment["SDL_VIDEODRIVER"]
-        let waylandDisplay = ProcessInfo.processInfo.environment["WAYLAND_DISPLAY"]
-        let display = ProcessInfo.processInfo.environment["DISPLAY"]
-        
-        if currentDriver == nil && waylandDisplay != nil && !waylandDisplay!.isEmpty {
-            // Force Wayland driver if WAYLAND_DISPLAY is set and driver not already set
-            #if os(Linux)
-            setenv("SDL_VIDEODRIVER", "wayland", 0)
-            // Unset DISPLAY to prevent SDL from probing X11 (which has broken symbols)
-            // This helps avoid X11 library loading during dynamic linking
-            if display != nil {
-                unsetenv("DISPLAY")
-                print("Wayland detected (WAYLAND_DISPLAY=\(waylandDisplay!)), forcing SDL_VIDEODRIVER=wayland and unsetting DISPLAY to avoid X11")
-            } else {
-                print("Wayland detected (WAYLAND_DISPLAY=\(waylandDisplay!)), forcing SDL_VIDEODRIVER=wayland")
-            }
-            #endif
-        } else if currentDriver != nil {
+        if currentDriver != nil {
             print("Using SDL_VIDEODRIVER=\(currentDriver!)")
+        } else {
+            print("SDL_VIDEODRIVER not set, SDL3 will auto-detect")
         }
         
         // Clear any previous errors
@@ -230,12 +217,20 @@ class SDL3Game {
         
         // Create SDL3 window on Linux
         let title = "Tetrix"
+        // Create window hidden - we'll show it in the run loop after SDL is fully ready
         let windowFlags = WindowFlag.combine(.hidden, .resizable)
+        
+        // Clear any SDL errors before creating window
+        SDL_ClearError()
+        
         window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: windowFlags)
         if window == nil {
-            print("Failed to create window")
+            let errorMsg = SDLHelper.errorMessage()
+            print("Failed to create window: \(errorMsg)")
             return
         }
+        
+        print("Window created successfully (hidden)")
         
         // Create SDL3 renderer on Linux
         if let sdlRenderer = SDLRenderHelper.create(window: window) {
@@ -308,21 +303,14 @@ class SDL3Game {
         render()
         
         #if os(Linux)
-        // Linux: Use SDL3 logical presentation for sharp scaling
+        // Linux: Defer window showing to first frame of run loop
+        // This ensures SDL event system is fully initialized before Wayland operations
+        // Window will be shown in run() method after first event pump
+        
+        // Use SDL3 logical presentation for sharp scaling (can be done before showing)
         if let sdlRenderer = renderer?.sdlHandle {
             _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
         }
-        
-        // Apply fullscreen state if it was saved
-        if isFullscreen {
-            _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: true)
-        }
-        
-        // Now show the window after first frame is rendered
-        SDLWindowHelper.show(window: window)
-        
-        // Always maximize the window on startup
-        _ = SDLWindowHelper.maximize(window: window)
         #else
         // Windows/macOS: Use Swift-native window operations
         // Apply fullscreen state if it was saved
@@ -369,6 +357,29 @@ class SDL3Game {
         // Simple, fast game loop - direct access, no threading overhead
         while running {
             let now = getCurrentTime()
+            
+            // Window is already visible (created without HIDDEN flag)
+            // Just apply fullscreen on first frame if needed
+            #if os(Linux)
+            if !windowShown {
+                if let window = window {
+                    // Pump events first to ensure SDL is ready
+                    SDLEventHelper.pumpEvents()
+                    // Try to show the window - wrap in error handling
+                    // Note: This may crash on some SDL3/Wayland setups
+                    SDL_ClearError()
+                    SDLWindowHelper.show(window: window)
+                    if let error = String.sdlError(), !error.isEmpty {
+                        print("Warning: Error showing window: \(error)")
+                    } else {
+                        print("Window shown successfully")
+                    }
+                    // Pump events again to let Wayland/X11 process the show
+                    SDLEventHelper.pumpEvents()
+                    windowShown = true
+                }
+            }
+            #endif
             
             // Only pump events periodically to avoid performance issues with controllers
             // When controller is active, pump less frequently (every 50ms) for button responsiveness

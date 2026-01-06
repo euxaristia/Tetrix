@@ -429,7 +429,7 @@ class Renderer: RendererProtocol {
     func renderTexture(_ texture: Texture, at rect: Rect, source: Rect? = nil) {
         var destRect = rect.toSDL()
         guard let sdlTexture = texture.sdlTexture else { return }
-        // SDL3 API: Convert OpaquePointer to UnsafeMutablePointer<SDL_Texture>
+        // SDL3 API: Convert UnsafeMutablePointer to the expected type
         let texturePtr = sdlTexture
         if let source = source {
             var srcRect = source.toSDL()

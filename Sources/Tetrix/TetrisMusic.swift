@@ -275,7 +275,7 @@ class TetrisMusic {
             sampleRate: Int32(sampleRate),
             channels: 1
         ) { [weak self] buffer, requestedSamples in
-            guard let self = self else {
+            guard let strongSelf = self else {
                 // Return silence if self is deallocated
                 if let buffer = buffer {
                     buffer.initialize(repeating: 0, count: Int(requestedSamples))
@@ -284,8 +284,8 @@ class TetrisMusic {
             }
             
             // Only generate audio if playing
-            if self.isPlaying {
-                return self.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
+            if strongSelf.isPlaying {
+                return strongSelf.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
             } else {
                 // Return silence if not playing
                 if let buffer = buffer {
