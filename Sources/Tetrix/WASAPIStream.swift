@@ -50,25 +50,18 @@ class WASAPIStream {
         }
         
         // COM GUIDs
-        var CLSID_MMDeviceEnumerator = GUID(
+        let CLSID_MMDeviceEnumerator = GUID(
             Data1: 0xBCDE0395,
             Data2: 0xE52F,
             Data3: 0x467C,
             Data4: (0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E)
         )
         
-        var IID_IMMDeviceEnumerator = GUID(
+        let IID_IMMDeviceEnumerator = GUID(
             Data1: 0xA95664D2,
             Data2: 0x9614,
             Data3: 0x4F35,
             Data4: (0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6)
-        )
-        
-        var IID_IMMDevice = GUID(
-            Data1: 0xD666063F,
-            Data2: 0x1587,
-            Data3: 0x4E43,
-            Data4: (0x81, 0xF1, 0xB9, 0x48, 0xE8, 0x07, 0x03, 0x30)
         )
         
         var IID_IAudioClient = GUID(
@@ -172,7 +165,7 @@ class WASAPIStream {
         
         // SetEventHandle function pointer (vtable index 13 for IAudioClient)
         let setEventHandle = unsafeBitCast(audioClientVTable[13], to: (@convention(c) (UnsafeMutableRawPointer?, HANDLE?) -> HRESULT).self)
-        setEventHandle(audioClient, bufferReadyEvent)
+        _ = setEventHandle(audioClient, bufferReadyEvent)
         
         // GetBufferSize function pointer (vtable index 4 for IAudioClient)
         let getBufferSize = unsafeBitCast(audioClientVTable[4], to: (@convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<UINT32>?) -> HRESULT).self)
@@ -228,7 +221,7 @@ class WASAPIStream {
         guard thread != nil else {
             let audioClientVTable = audioClient.assumingMemoryBound(to: UnsafeMutablePointer<UnsafeMutableRawPointer?>.self).pointee
             let stop = unsafeBitCast(audioClientVTable[11], to: (@convention(c) (UnsafeMutableRawPointer?) -> HRESULT).self)
-            stop(audioClient)
+            _ = stop(audioClient)
             isActive = false
             print("WASAPI: CreateThread failed")
             return
@@ -246,7 +239,7 @@ class WASAPIStream {
         if let audioClient = audioClient {
             let audioClientVTable = audioClient.assumingMemoryBound(to: UnsafeMutablePointer<UnsafeMutableRawPointer?>.self).pointee
             let stop = unsafeBitCast(audioClientVTable[11], to: (@convention(c) (UnsafeMutableRawPointer?) -> HRESULT).self)
-            stop(audioClient)
+            _ = stop(audioClient)
         }
     }
     
@@ -266,14 +259,14 @@ class WASAPIStream {
             let audioClientVTable = audioClient.assumingMemoryBound(to: UnsafeMutablePointer<UnsafeMutableRawPointer?>.self).pointee
             let stop = unsafeBitCast(audioClientVTable[11], to: (@convention(c) (UnsafeMutableRawPointer?) -> HRESULT).self)
             let release = unsafeBitCast(audioClientVTable[2], to: (@convention(c) (UnsafeMutableRawPointer?) -> ULONG).self)
-            stop(audioClient)
-            release(audioClient)
+            _ = stop(audioClient)
+            _ = release(audioClient)
         }
         
         if let renderClient = renderClient {
             let renderClientVTable = renderClient.assumingMemoryBound(to: UnsafeMutablePointer<UnsafeMutableRawPointer?>.self).pointee
             let release = unsafeBitCast(renderClientVTable[2], to: (@convention(c) (UnsafeMutableRawPointer?) -> ULONG).self)
-            release(renderClient)
+            _ = release(renderClient)
         }
         
         if let stopEvent = stopEvent {
@@ -296,13 +289,10 @@ class WASAPIStream {
         
         print("WASAPI audio thread started")
         
-        guard let stopEvt = stream.stopEvent, let bufferEvt = stream.bufferReadyEvent else {
-            print("WASAPI: Events are nil in thread")
+        guard let stopEvt = stream.stopEvent else {
+            print("WASAPI: Stop event is nil in thread")
             return 0
         }
-        
-        // Create events array for WaitForMultipleObjects (needs contiguous memory)
-        var events: [HANDLE] = [stopEvt, bufferEvt]
         
         print("WASAPI audio thread entered loop, isActive=\(stream.isActive)")
         var loopCount = 0
