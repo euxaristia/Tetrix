@@ -384,6 +384,7 @@ jobs:
       id: swift-cache
       with:
         path: |
+          ${{ env.LOCALAPPDATA }}/Programs/Swift/Toolchains
           ${{ runner.temp }}/swift
           ${{ runner.temp }}/swift-*
           ${{ runner.temp }}/swiftpm
@@ -637,7 +638,7 @@ jobs:
       if: steps.swift-cache.outputs.cache-hit != 'true' || steps.configure-swift-path.outputs.swift_not_found == 'true'
       shell: pwsh
       run: |
-        Write-Host "💾 Determining where Swift was installed to save to cache..." -ForegroundColor Yellow
+        Write-Host "💾 Verifying Swift installation location for caching..." -ForegroundColor Yellow
         # Find where Swift was actually installed
         $swiftExe = Get-Command swift -ErrorAction SilentlyContinue
         if ($swiftExe) {
@@ -646,9 +647,24 @@ jobs:
           Write-Host "Swift found at: $($swiftExe.Source)" -ForegroundColor Green
           Write-Host "Swift toolchain root: $swiftToolchainRoot" -ForegroundColor Cyan
           
-          # Note: Cache action will automatically save paths at end of job
-          # But we need to make sure we're caching the right paths
-          # For now, this is informational - the cache action should handle saving
+          # Verify the cache path exists
+          $cachePath = "$env:LOCALAPPDATA\Programs\Swift\Toolchains"
+          if (Test-Path $cachePath) {
+            Write-Host "✅ Cache path exists: $cachePath" -ForegroundColor Green
+            Write-Host "   Toolchains found:" -ForegroundColor Cyan
+            Get-ChildItem -Path $cachePath -Directory | ForEach-Object {
+              Write-Host "     - $($_.Name)" -ForegroundColor Gray
+            }
+            Write-Host ""
+            Write-Host "✅ Cache should save correctly - Swift toolchain is in the cached location!" -ForegroundColor Green
+          } else {
+            Write-Host "⚠️  Cache path does not exist: $cachePath" -ForegroundColor Yellow
+            Write-Host "   Swift is installed at: $swiftToolchainRoot" -ForegroundColor Cyan
+            Write-Host "   This may indicate the installation location changed" -ForegroundColor Yellow
+          }
+          
+          Write-Host ""
+          Write-Host "Note: GitHub Actions cache action will automatically save these paths at the end of the job" -ForegroundColor Gray
         } else {
           Write-Host "❌ Swift not found after setup - cannot determine cache location" -ForegroundColor Red
         }
