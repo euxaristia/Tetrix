@@ -64,24 +64,46 @@ jobs:
         # Help SwiftyLab detect cached Swift if present
         RUNNER_TEMP: ${{ runner.temp }}
     
-    - name: Debug Swift installation location
+    - name: Debug Swift installation location (after setup)
       if: steps.swift-cache.outputs.cache-hit != 'true'
       run: |
-        echo "🔍 Debugging Swift installation location..."
+        echo "🔍 Debugging where SwiftyLab installed Swift..."
         echo "RUNNER_TEMP: ${{ runner.temp }}"
         echo ""
-        echo "Checking ${{ runner.temp }}:"
-        ls -la "${{ runner.temp }}/" 2>/dev/null | grep -i swift || echo "  No swift* directories found"
+        echo "All directories in RUNNER_TEMP:"
+        ls -la "${{ runner.temp }}/" 2>/dev/null || echo "  RUNNER_TEMP not accessible"
         echo ""
-        echo "Checking /opt:"
-        ls -la /opt/ 2>/dev/null | grep -i swift || echo "  No swift directory in /opt/"
+        echo "Checking for Swift-related directories:"
+        echo "  In ${{ runner.temp }}:"
+        ls -la "${{ runner.temp }}/" 2>/dev/null | grep -i swift || echo "    No swift* directories"
+        echo "  In /opt:"
+        ls -la /opt/ 2>/dev/null | grep -i swift || echo "    No swift directory"
+        echo "  In home directory:"
+        ls -la ~/.swift* 2>/dev/null || echo "    No ~/.swift* directories"
         echo ""
-        echo "Checking home directory:"
-        ls -la ~/.swift* 2>/dev/null || echo "  No ~/.swift* directories found"
+        echo "Searching for swift binary recursively:"
+        if [ -d "${{ runner.temp }}" ]; then
+          find "${{ runner.temp }}" -name "swift" -type f 2>/dev/null | head -5 || echo "  swift not found in RUNNER_TEMP"
+        fi
+        find /opt -name "swift" -type f 2>/dev/null | head -5 || echo "  swift not found in /opt"
         echo ""
-        echo "Swift binary location:"
-        which swift || echo "  swift not in PATH"
-        swift --version 2>/dev/null || echo "  swift command failed"
+        echo "Swift binary location (from PATH):"
+        SWIFT_PATH=$(which swift 2>/dev/null || echo "")
+        if [ -n "$SWIFT_PATH" ]; then
+          echo "  ✅ Found: $SWIFT_PATH"
+          echo "  Real path: $(readlink -f "$SWIFT_PATH" 2>/dev/null || realpath "$SWIFT_PATH" 2>/dev/null || echo "$SWIFT_PATH")"
+          # Determine the toolchain root directory
+          SWIFT_DIR=$(dirname "$SWIFT_PATH")
+          TOOLCHAIN_ROOT=$(dirname "$SWIFT_DIR" 2>/dev/null || echo "")
+          echo "  Toolchain root (likely): $TOOLCHAIN_ROOT"
+        else
+          echo "  ❌ swift not in PATH"
+        fi
+        echo ""
+        if [ -n "$SWIFT_PATH" ]; then
+          echo "Swift version:"
+          swift --version 2>/dev/null || echo "  Failed to get version"
+        fi
         echo ""
         echo "Environment variables:"
         env | grep -i swift || echo "  No SWIFT-related env vars"
