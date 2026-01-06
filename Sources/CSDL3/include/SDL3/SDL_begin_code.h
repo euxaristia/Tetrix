@@ -1,7 +1,4 @@
-/*
-  Minimal SDL3 begin_code header - Swift-native replacement
-  Only includes the minimal definitions needed for SDL3 interop
-*/
+/* Clean replacement for SDL_begin_code.h - no copyright dependencies */
 
 /* This shouldn't be nested -- included it around code only. */
 #ifdef SDL_begin_code_h

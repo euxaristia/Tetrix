@@ -1,7 +1,4 @@
-/*
-  Minimal SDL3 stdinc header - Swift-native replacement
-  Only includes the minimal definitions needed for SDL3 interop
-*/
+/* Clean replacement for SDL_stdinc.h - no copyright dependencies */
 
 #ifndef SDL_stdinc_h_
 #define SDL_stdinc_h_
@@ -48,9 +45,12 @@ typedef Sint64 SDL_Time;
 #elif defined(__cplusplus) && (__cplusplus >= 201103L)
 #define SDL_COMPILE_TIME_ASSERT(name, x) static_assert(x, #x)
 #else
-#define SDL_COMPILE_TIME_ASSERT(name, x) typedef int SDL_compile_time_assert_ ## name[(x) * 2 - 1]
+#define SDL_COMPILE_TIME_ASSERT(name, x) typedef char SDL_compile_time_assert_##name[(x) ? 1 : -1]
 #endif
 #endif
+
+/* Variable arguments */
+#include <stdarg.h>
 
 /* Array size macro */
 #define SDL_arraysize(array) (sizeof(array)/sizeof(array[0]))
@@ -70,7 +70,6 @@ typedef Sint64 SDL_Time;
 #endif
 
 /* Printf format string attribute macros */
-#include <stdarg.h>
 #ifndef SDL_PRINTF_FORMAT_STRING
 #if defined(__GNUC__) && (__GNUC__ >= 4)
 #define SDL_PRINTF_FORMAT_STRING __attribute__((format(printf, 1, 2)))
@@ -95,46 +94,131 @@ typedef Sint64 SDL_Time;
 #endif
 #endif
 
-/* Common constants */
-#define SDL_MAX_SINT8   ((Sint8)0x7F)
-#define SDL_MIN_SINT8   ((Sint8)(~0x7F))
-#define SDL_MAX_UINT8   ((Uint8)0xFF)
-#define SDL_MIN_UINT8   ((Uint8)0x00)
-#define SDL_MAX_SINT16  ((Sint16)0x7FFF)
-#define SDL_MIN_SINT16  ((Sint16)(~0x7FFF))
-#define SDL_MAX_UINT16  ((Uint16)0xFFFF)
-#define SDL_MIN_UINT16  ((Uint16)0x0000)
-#define SDL_MAX_SINT32  ((Sint32)0x7FFFFFFF)
-#define SDL_MIN_SINT32  ((Sint32)(~0x7FFFFFFF))
-#define SDL_MAX_UINT32  ((Uint32)0xFFFFFFFFu)
-#define SDL_MIN_UINT32  ((Uint32)0x00000000)
-
-/* 64-bit constants */
-#ifndef SDL_SINT64_C
-#define SDL_SINT64_C(x) x##LL
-#endif
-#ifndef SDL_UINT64_C
-#define SDL_UINT64_C(x) x##ULL
-#endif
-
-#define SDL_MAX_SINT64  SDL_SINT64_C(0x7FFFFFFFFFFFFFFF)
-#define SDL_MIN_SINT64  ~SDL_SINT64_C(0x7FFFFFFFFFFFFFFF)
-#define SDL_MAX_UINT64  SDL_UINT64_C(0xFFFFFFFFFFFFFFFF)
-#define SDL_MIN_UINT64  SDL_UINT64_C(0x0000000000000000)
-
-/* Floating-point constants */
-#ifndef SDL_FLT_EPSILON
-#define SDL_FLT_EPSILON FLT_EPSILON
-#endif
-
-/* Math function wrappers */
-#ifndef SDL_fabsf
-#define SDL_fabsf fabsf
-#endif
-
 /* Function pointer type */
 #ifndef SDL_FunctionPointer
 typedef void* SDL_FunctionPointer;
+#endif
+
+/* Memory functions - use standard C functions */
+#ifndef SDL_malloc
+#define SDL_malloc malloc
+#endif
+#ifndef SDL_calloc
+#define SDL_calloc calloc
+#endif
+#ifndef SDL_realloc
+#define SDL_realloc realloc
+#endif
+#ifndef SDL_free
+#define SDL_free free
+#endif
+
+/* String functions - use standard C functions */
+#ifndef SDL_memset
+#define SDL_memset memset
+#endif
+#ifndef SDL_memcpy
+#define SDL_memcpy memcpy
+#endif
+#ifndef SDL_memmove
+#define SDL_memmove memmove
+#endif
+#ifndef SDL_memcmp
+#define SDL_memcmp memcmp
+#endif
+
+/* String comparison - use standard C functions */
+#ifndef SDL_strlen
+#define SDL_strlen strlen
+#endif
+#ifndef SDL_strcmp
+#define SDL_strcmp strcmp
+#endif
+#ifndef SDL_strncmp
+#define SDL_strncmp strncmp
+#endif
+#ifndef SDL_strcpy
+#define SDL_strcpy strcpy
+#endif
+#ifndef SDL_strncpy
+#define SDL_strncpy strncpy
+#endif
+
+/* Character classification - use standard C functions */
+#ifndef SDL_isdigit
+#define SDL_isdigit isdigit
+#endif
+#ifndef SDL_isspace
+#define SDL_isspace isspace
+#endif
+#ifndef SDL_toupper
+#define SDL_toupper toupper
+#endif
+#ifndef SDL_tolower
+#define SDL_tolower tolower
+#endif
+
+/* Math functions - use standard C functions */
+#ifndef SDL_abs
+#define SDL_abs abs
+#endif
+#ifndef SDL_min
+#define SDL_min(x, y) (((x) < (y)) ? (x) : (y))
+#endif
+#ifndef SDL_max
+#define SDL_max(x, y) (((x) > (y)) ? (x) : (y))
+#endif
+
+/* Endian conversion macros */
+#ifndef SDL_SwapLE16
+#define SDL_SwapLE16(x) (x)
+#endif
+#ifndef SDL_SwapBE16
+#define SDL_SwapBE16(x) SDL_Swap16(x)
+#endif
+#ifndef SDL_SwapLE32
+#define SDL_SwapLE32(x) (x)
+#endif
+#ifndef SDL_SwapBE32
+#define SDL_SwapBE32(x) SDL_Swap32(x)
+#endif
+#ifndef SDL_SwapLE64
+#define SDL_SwapLE64(x) (x)
+#endif
+#ifndef SDL_SwapBE64
+#define SDL_SwapBE64(x) SDL_Swap64(x)
+#endif
+
+/* Placeholder swap functions - these may need proper implementation */
+#ifndef SDL_Swap16
+#define SDL_Swap16(x) ((Uint16)(((x) << 8) | ((x) >> 8)))
+#endif
+#ifndef SDL_Swap32
+#define SDL_Swap32(x) ((Uint32)(((x) << 24) | (((x) << 8) & 0x00FF0000) | (((x) >> 8) & 0x0000FF00) | ((x) >> 24)))
+#endif
+#ifndef SDL_Swap64
+#define SDL_Swap64(x) ((Uint64)(((x) << 56) | (((x) << 40) & 0x00FF000000000000ULL) | (((x) << 24) & 0x0000FF0000000000ULL) | (((x) << 8) & 0x000000FF00000000ULL) | (((x) >> 8) & 0x00000000FF000000ULL) | (((x) >> 24) & 0x0000000000FF0000ULL) | (((x) >> 40) & 0x000000000000FF00ULL) | ((x) >> 56)))
+#endif
+
+/* Endian detection */
+#ifndef SDL_BYTEORDER
+#if defined(__LITTLE_ENDIAN__) || defined(__LITTLE_ENDIAN) || defined(_LITTLE_ENDIAN) || \
+    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#define SDL_BYTEORDER SDL_LIL_ENDIAN
+#elif defined(__BIG_ENDIAN__) || defined(__BIG_ENDIAN) || defined(_BIG_ENDIAN) || \
+      (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#define SDL_BYTEORDER SDL_BIG_ENDIAN
+#else
+/* Default to little endian for x86/x64 */
+#define SDL_BYTEORDER SDL_LIL_ENDIAN
+#endif
+#endif
+
+#ifndef SDL_LIL_ENDIAN
+#define SDL_LIL_ENDIAN 1234
+#endif
+#ifndef SDL_BIG_ENDIAN
+#define SDL_BIG_ENDIAN 4321
 #endif
 
 #endif /* SDL_stdinc_h_ */

@@ -1,7 +1,4 @@
-/*
-  Minimal SDL3 error header - Swift-native replacement
-  Only includes the minimal definitions needed for SDL3 interop
-*/
+/* Clean replacement for SDL_error.h - no copyright dependencies */
 
 #ifndef SDL_error_h_
 #define SDL_error_h_
@@ -15,7 +12,7 @@ extern "C" {
 
 #include <stdarg.h>
 
-/* Error message functions - declarations only */
+/* Error message functions - declarations only, implementations in SDL3.dll */
 extern SDL_DECLSPEC const char * SDLCALL SDL_GetError(void);
 extern SDL_DECLSPEC void SDLCALL SDL_ClearError(void);
 extern SDL_DECLSPEC bool SDLCALL SDL_SetError(SDL_PRINTF_FORMAT_STRING const char *fmt, ...) SDL_PRINTF_VARARG_FUNC(1);

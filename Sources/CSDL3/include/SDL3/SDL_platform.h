@@ -1,7 +1,4 @@
-/*
-  Minimal SDL3 platform header - Swift-native replacement
-  Only includes the minimal definitions needed for SDL3 interop
-*/
+/* Clean replacement for SDL_platform.h - no copyright dependencies */
 
 #ifndef SDL_platform_h_
 #define SDL_platform_h_
@@ -13,7 +10,7 @@
 extern "C" {
 #endif
 
-/* Platform identification function */
+/* Platform identification function - declaration only, implementation in SDL3.dll */
 extern SDL_DECLSPEC const char * SDLCALL SDL_GetPlatform(void);
 
 #ifdef __cplusplus

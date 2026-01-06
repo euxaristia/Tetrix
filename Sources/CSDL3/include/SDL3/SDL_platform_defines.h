@@ -1,7 +1,4 @@
-/*
-  Minimal SDL3 platform defines header - Swift-native replacement
-  Only includes essential platform detection macros
-*/
+/* Clean replacement for SDL_platform_defines.h - no copyright dependencies */
 
 #ifndef SDL_platform_defines_h_
 #define SDL_platform_defines_h_

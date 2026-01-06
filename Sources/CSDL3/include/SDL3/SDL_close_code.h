@@ -1,7 +1,4 @@
-/*
-  Minimal SDL3 close_code header - Swift-native replacement
-  Reverses the effects of SDL_begin_code.h
-*/
+/* Clean replacement for SDL_close_code.h - no copyright dependencies */
 
 #ifndef SDL_begin_code_h
 #error SDL_close_code.h included without matching SDL_begin_code.h
