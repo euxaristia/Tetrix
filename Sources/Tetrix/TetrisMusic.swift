@@ -216,6 +216,8 @@ class TetrisMusic {
     private var audioStream: SwiftAudioStream? = nil
     #if os(Linux)
     private var pulseAudioStream: PulseAudioStream? = nil
+    #elseif os(Windows)
+    private var wasapiStream: WASAPIStream? = nil
     #endif
     private var sampleRate: Int = 44100
     private var isPlaying = false
@@ -304,8 +306,48 @@ class TetrisMusic {
         print("  Sample rate: \(sampleRate) Hz")
         print("  Format: 16-bit signed")
         print("  Channels: Mono")
+        #elseif os(Windows)
+        // Temporarily disabled WASAPI - using SDL3 audio on Windows for now
+        // TODO: Re-enable WASAPI once crash is isolated
+        print("Warning: WASAPI temporarily disabled, using SDL3 audio fallback")
+        // Use SDL3 audio as fallback
+        let deviceID = SwiftAudioStream.getPlaybackDevice()
+        
+        audioStream = SwiftAudioStream(
+            device: deviceID,
+            sampleRate: Int32(sampleRate),
+            format: SwiftAudioFormat.s16,
+            channels: 1
+        ) { [weak self] buffer, requestedSamples in
+            guard let self = self else {
+                if let buffer = buffer {
+                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
+                }
+                return requestedSamples
+            }
+            
+            if self.isPlaying {
+                return self.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
+            } else {
+                if let buffer = buffer {
+                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
+                }
+                return requestedSamples
+            }
+        }
+        
+        if audioStream == nil {
+            let errorString = String.sdlError() ?? "Unknown error"
+            print("Warning: Failed to open audio device: \(errorString)")
+            return
+        }
+        
+        print("SDL3 audio stream created successfully (Windows fallback)")
+        print("  Sample rate: \(sampleRate) Hz")
+        print("  Format: 16-bit signed")
+        print("  Channels: Mono")
         #else
-        // Use SDL3 audio on other platforms
+        // Use SDL3 audio on macOS and other platforms
         let deviceID = SwiftAudioStream.getPlaybackDevice()
         
         audioStream = SwiftAudioStream(
@@ -427,8 +469,16 @@ class TetrisMusic {
         } else {
             print("Warning: PulseAudio stream not initialized")
         }
+        #elseif os(Windows)
+        // Temporarily using SDL3 audio (WASAPI disabled due to crash)
+        guard let stream = audioStream else {
+            print("Warning: Cannot start music - audio stream not initialized")
+            return
+        }
+        stream.start()
+        print("Music started - background generation active (SDL3 fallback)")
         #else
-        // Use SDL3 audio on other platforms
+        // Use SDL3 audio on macOS and other platforms
         guard let stream = audioStream else {
             print("Warning: Cannot start music - audio stream not initialized")
             return
@@ -447,6 +497,9 @@ class TetrisMusic {
         isPlaying = false
         #if os(Linux)
         pulseAudioStream?.stop()
+        #elseif os(Windows)
+        // Temporarily using SDL3 audio (WASAPI disabled due to crash)
+        audioStream?.stop()
         #else
         audioStream?.stop()
         #endif
@@ -460,7 +513,13 @@ class TetrisMusic {
     }
     
     deinit {
-        // AudioStream deinit will clean up SDL stream automatically
+        // Clean up audio streams
+        #if os(Linux)
+        pulseAudioStream = nil
+        #elseif os(Windows)
+        wasapiStream = nil
+        #else
         audioStream = nil
+        #endif
     }
 }

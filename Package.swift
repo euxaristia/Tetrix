@@ -34,16 +34,23 @@ let package = Package(
         .target(
             name: "CPulseAudio",
             path: "Sources/CPulseAudio",
-            sources: ["PulseAudioWrapper.c"],
+            sources: [
+                "PulseAudioWrapper.c",
+                "WASAPIWrapper.c"
+            ],
             publicHeadersPath: "include",
-            // C module with PulseAudio wrapper for audio (Linux only, Windows has stubs)
+            // C module with PulseAudio wrapper for Linux and WASAPI wrapper for Windows
             cSettings: [
                 // Linux: Add PulseAudio compiler flags
                 .unsafeFlags(["-D_REENTRANT"], .when(platforms: [.linux]))
             ],
             linkerSettings: [
                 // Linux: Link PulseAudio libraries
-                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux]))
+                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux])),
+                // Windows: Link WASAPI libraries
+                .unsafeFlags(["-Xlinker", "avrt.lib"], .when(platforms: [.windows])),
+                .unsafeFlags(["-Xlinker", "ole32.lib"], .when(platforms: [.windows])),
+                .unsafeFlags(["-Xlinker", "uuid.lib"], .when(platforms: [.windows]))
             ]
         ),
         .executableTarget(

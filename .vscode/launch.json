@@ -5,36 +5,33 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug Tetrix",
-            // Windows path (on Linux, change to: "${workspaceFolder}/.build/debug/Tetrix")
-            "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/debug/Tetrix.exe",
+            "program": "${workspaceFolder:Tetrix}/.build/debug/Tetrix",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder:Tetrix}",
             "console": "integratedTerminal",
             "stopOnEntry": false,
-            "initCommands": [],
-            "sourceLanguages": ["swift", "c", "cpp"]
+            "sourceLanguages": [
+                "swift",
+                "c",
+                "cpp"
+            ],
+            "preLaunchTask": "swift: Build Debug Tetrix"
         },
         {
             "type": "lldb",
             "request": "launch",
             "name": "Release Tetrix",
-            // Windows path (on Linux, change to: "${workspaceFolder}/.build/release/Tetrix")
-            "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/release/Tetrix.exe",
+            "program": "${workspaceFolder:Tetrix}/.build/release/Tetrix",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder:Tetrix}",
             "console": "integratedTerminal",
             "stopOnEntry": false,
-            "initCommands": [],
-            "sourceLanguages": ["swift", "c", "cpp"]
-            // On Linux, add these settings:
-            // "env": {
-            //     "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:${env:LD_LIBRARY_PATH}"
-            // },
-            // "initCommands": [
-            //     "settings set target.env-vars LD_LIBRARY_PATH=/usr/lib/swift/lib/swift/linux",
-            //     "settings set symbols.enable-external-lookup true",
-            //     "settings set symbols.load-on-demand false"
-            // ]
+            "sourceLanguages": [
+                "swift",
+                "c",
+                "cpp"
+            ],
+            "preLaunchTask": "swift: Build Release Tetrix"
         }
     ]
 }

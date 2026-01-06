@@ -1123,11 +1123,12 @@ class SDL3Game {
         }
         
         // Controls hint - switch between keyboard and controller
-        // Position controls text in the side panel, aligned with window bottom to ensure it fits
+        // Position controls text in the side panel, aligned with bottom right corner
+        // Since we use logical presentation, all coordinates must be in logical space
         // Controller has 6 lines (120px), keyboard has 5 lines (100px), plus 20px for "Controls:" label
-        // Position from window bottom: windowHeight - (max lines * 20) - padding
+        // Position from logical height bottom: logicalHeight - (max lines * 20) - padding
         let maxControlsHeight: Int32 = 140 // 6 lines * 20px + 20px label = 140px
-        let controlsStartY = windowHeight - maxControlsHeight - 10 // 10px padding from bottom
+        let controlsStartY = logicalHeight - maxControlsHeight - 10 // 10px padding from bottom
         drawText(x: panelX, y: controlsStartY, text: "Controls:", r: 150, g: 150, b: 150)
         if usingController && gamepad != nil {
             // Controller controls (D-pad and buttons only, no joystick)
