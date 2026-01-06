@@ -430,8 +430,11 @@ class SDL3Game {
                     } else {
                         print("Window shown successfully")
                     }
-                    // Pump events again to let window manager process the show
-                    SDLEventHelper.pumpEvents()
+                    // Pump events multiple times to ensure window manager processes show/raise
+                    // This is critical for the window to receive keyboard focus
+                    for _ in 0..<5 {
+                        SDLEventHelper.pumpEvents()
+                    }
                     
                     // Render once more to ensure correct display before window becomes visible
                     render()
@@ -443,8 +446,8 @@ class SDL3Game {
                 }
             }
             
-            // Process events - in debug mode, only process once per loop to reduce overhead
-            // Debugger already slows things down, so doing multiple passes doesn't help
+            // Process events every iteration - critical for input responsiveness
+            // Events must be processed frequently to ensure no input is missed
             handleEvents()
             
             // Handle held D-pad down for soft drop
@@ -463,22 +466,27 @@ class SDL3Game {
             
             #if DEBUG
             // In debug mode, minimize work - debugger overhead is unavoidable
-            // Only do essential updates, skip rendering unless needed
+            // Skip updates and rendering most of the time to reduce overhead
+            // Only update/render occasionally to keep game responsive
             let dropInterval = getDropInterval()
-            if now - lastDropTime >= dropInterval {
-                engine.update()
-                lastDropTime = now
-                // Only render when game state actually changes
+            let timeSinceLastFrame = now - lastFrameTime
+            // Only update/render every 16ms (roughly 60fps) in debug mode
+            // This reduces debugger overhead while maintaining playability
+            if timeSinceLastFrame >= 0.016 {
+                if now - lastDropTime >= dropInterval {
+                    engine.update()
+                    lastDropTime = now
+                }
+                // Update line clearing animation less frequently in debug mode
+                engine.updateLineClearing()
+                // Only render occasionally to reduce debugger overhead
                 render()
+                lastFrameTime = now
             }
-            // Skip music updates entirely in debug mode
-            // Skip line clearing animation updates entirely in debug mode (animation still completes, just slower)
-            // Don't update line clearing in debug - let it happen naturally on next update
+            // Skip music updates entirely in debug mode to reduce overhead
             
-            // Yield to allow Windows to process window messages
-            // Use longer sleep in debug mode to reduce CPU usage and let debugger catch up
-            PlatformHelper.sleep(milliseconds: 5)  // 5ms sleep to reduce debugger overhead
-            lastFrameTime = now
+            // Minimal sleep - just yield to OS, don't sleep too long as it makes input feel laggy
+            PlatformHelper.sleep(milliseconds: 1)  // 1ms sleep to yield to OS
             #else
             // Update music (only if enabled)
             if musicEnabled {
@@ -508,12 +516,14 @@ class SDL3Game {
     private func handleEvents() {
         // Pump events from OS into SDL's queue first - critical for input responsiveness
         // Always pump every frame to ensure no input is missed (works on all platforms with SDL3)
-        // When debugging, pump multiple times to compensate for debugger delays
+        // In release builds, pump once per frame (sufficient for responsiveness)
+        // When debugging, reduce pumping frequency to minimize debugger overhead
         #if DEBUG
-        for _ in 0..<3 {
-            SDLEventHelper.pumpEvents()
-        }
+        // In debug mode, pump less frequently to reduce debugger overhead
+        // Debugger already slows things down, so fewer pumps = less overhead
+        SDLEventHelper.pumpEvents()
         #else
+        // In release, pump every frame for maximum responsiveness
         SDLEventHelper.pumpEvents()
         #endif
         // Always flush analog events immediately after pumping to prevent queue buildup

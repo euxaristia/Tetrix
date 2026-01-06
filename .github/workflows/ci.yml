@@ -275,7 +275,7 @@ jobs:
         
         # With --static-swift-stdlib, the executable should be self-contained
         # No need to bundle DLLs - just rename for clarity and upload
-        $releaseExe = "Tetrix-windows.exe"
+        $releaseExe = "TetrixWindows.exe"
         Copy-Item $exePath $releaseExe
         
         $fileInfo = Get-Item $releaseExe
@@ -329,7 +329,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: tetrix-windows
-        path: Tetrix-windows.exe
+        path: TetrixWindows.exe
         retention-days: 1
 
   release:
@@ -376,6 +376,6 @@ jobs:
         files: |
           artifacts/linux/Tetrix
           artifacts/macos/TetrixDarwin
-          artifacts/windows/Tetrix-windows.exe
+          artifacts/windows/TetrixWindows.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

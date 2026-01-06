@@ -25,6 +25,7 @@ let package = Package(
             ],
             linkerSettings: [
                 // Windows: Link against static libraries (built in CI, renamed to standard names)
+                // Add current directory to library search path first (highest priority)
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
@@ -72,6 +73,8 @@ let package = Package(
             ],
             linkerSettings: [
                 // Windows: Link against static libraries (built in CI, renamed to standard names)
+                // Add current directory to library search path first (highest priority)
+                // This ensures the static SDL3.lib in the project root is found before any DLL import libraries
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),

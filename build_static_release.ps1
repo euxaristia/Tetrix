@@ -2,6 +2,19 @@
 
 Write-Host "Building statically linked release executable with Tenebris obfuscation..." -ForegroundColor Cyan
 
+# Check if SDL3.lib exists, build it if missing
+$sdl3LibPath = Join-Path $PSScriptRoot "SDL3.lib"
+if (-not (Test-Path $sdl3LibPath)) {
+    Write-Host "SDL3.lib not found. Building SDL3 as a static library..." -ForegroundColor Yellow
+    & "$PSScriptRoot\build_sdl3_static.ps1"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to build SDL3 static library" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host "SDL3.lib found at: $sdl3LibPath" -ForegroundColor Green
+}
+
 # Clean previous build
 Write-Host "Cleaning previous build..." -ForegroundColor Yellow
 swift package clean

@@ -219,11 +219,13 @@ struct SDLWindowHelper {
         #endif
     }
     
-    /// Show window
+    /// Show window and ensure it gets focus
     static func show(window: OpaquePointer?) {
         SDL_ShowWindow(window)
         // Raise window to ensure it gets focus and is responsive
         SDL_RaiseWindow(window)
+        // Pump events to ensure window manager processes the show/raise
+        SDL_PumpEvents()
     }
     
     /// Maximize window
