@@ -224,8 +224,13 @@ struct SDLWindowHelper {
         SDL_ShowWindow(window)
         // Raise window to ensure it gets focus and is responsive
         SDL_RaiseWindow(window)
-        // Pump events to ensure window manager processes the show/raise
-        SDL_PumpEvents()
+        // Pump events multiple times to ensure window manager processes the show/raise
+        // This is critical for the window to receive keyboard focus on all platforms
+        for _ in 0..<10 {
+            SDL_PumpEvents()
+            // Small delay to allow window manager to process events
+            PlatformHelper.sleep(milliseconds: 1)
+        }
     }
     
     /// Maximize window
@@ -277,19 +282,20 @@ struct SDLEventHelper {
     }
     
     /// Get keyboard event scancode (Swift wrapper for cleaner access)
-    static func getScancode(from keyEvent: UnsafePointer<SDL_KeyboardEvent>) -> SDL_Scancode {
-        // scancode is already SDL_Scancode in the original headers
-        return UInt32(keyEvent.pointee.scancode.rawValue)
+    static func getScancode(from keyEvent: inout SDL_KeyboardEvent) -> SDL_Scancode {
+        // Access scancode field directly from the structure
+        // SDL_Scancode is an enum, convert to UInt32 for KeyCode
+        return UInt32(keyEvent.scancode.rawValue)
     }
     
     /// Get keyboard event repeat flag
-    static func isRepeat(from keyEvent: UnsafePointer<SDL_KeyboardEvent>) -> Bool {
-        return keyEvent.pointee.repeat
+    static func isRepeat(from keyEvent: inout SDL_KeyboardEvent) -> Bool {
+        return keyEvent.repeat
     }
     
     /// Get gamepad button from event
-    static func getButton(from buttonEvent: UnsafePointer<SDL_GamepadButtonEvent>) -> UInt8 {
-        return buttonEvent.pointee.button
+    static func getButton(from buttonEvent: inout SDL_GamepadButtonEvent) -> UInt8 {
+        return buttonEvent.button
     }
     
     /// Get gamepad axis from event
@@ -694,31 +700,37 @@ struct EventPoller {
             return .quit
             
         case UInt32(SDL_EVENT_KEY_DOWN.rawValue):
-            let keyEvent = withUnsafePointer(to: &sdlEvent.key) { $0 }
-            let scancode = SDLEventHelper.getScancode(from: keyEvent)
-            let isRepeat = SDLEventHelper.isRepeat(from: keyEvent)
+            // Access union member directly - all union members share the same memory at offset 0
+            var keyEvent = sdlEvent.key
+            let scancode = SDLEventHelper.getScancode(from: &keyEvent)
+            let isRepeat = SDLEventHelper.isRepeat(from: &keyEvent)
             return .keyDown(KeyCode(from: scancode), isRepeat: isRepeat)
             
         case UInt32(SDL_EVENT_KEY_UP.rawValue):
-            let keyEvent = withUnsafePointer(to: &sdlEvent.key) { $0 }
-            let scancode = SDLEventHelper.getScancode(from: keyEvent)
+            // Access union member directly
+            var keyEvent = sdlEvent.key
+            let scancode = SDLEventHelper.getScancode(from: &keyEvent)
             return .keyUp(KeyCode(from: scancode))
             
         case UInt32(SDL_EVENT_GAMEPAD_ADDED.rawValue):
-            let gamepadEvent = withUnsafePointer(to: &sdlEvent.gdevice) { $0 }
-            return .gamepadAdded(gamepadEvent.pointee.which)
+            // Access union member directly
+            let gamepadEvent = sdlEvent.gdevice
+            return .gamepadAdded(gamepadEvent.which)
             
         case UInt32(SDL_EVENT_GAMEPAD_REMOVED.rawValue):
-            let gamepadEvent = withUnsafePointer(to: &sdlEvent.gdevice) { $0 }
-            return .gamepadRemoved(gamepadEvent.pointee.which)
+            // Access union member directly
+            let gamepadEvent = sdlEvent.gdevice
+            return .gamepadRemoved(gamepadEvent.which)
             
         case UInt32(SDL_EVENT_GAMEPAD_BUTTON_DOWN.rawValue):
-            let buttonEvent = withUnsafePointer(to: &sdlEvent.gbutton) { $0 }
-            return .gamepadButtonDown(SDLEventHelper.getButton(from: buttonEvent))
+            // Access union member directly
+            var buttonEvent = sdlEvent.gbutton
+            return .gamepadButtonDown(SDLEventHelper.getButton(from: &buttonEvent))
             
         case UInt32(SDL_EVENT_GAMEPAD_BUTTON_UP.rawValue):
-            let buttonEvent = withUnsafePointer(to: &sdlEvent.gbutton) { $0 }
-            return .gamepadButtonUp(SDLEventHelper.getButton(from: buttonEvent))
+            // Access union member directly
+            var buttonEvent = sdlEvent.gbutton
+            return .gamepadButtonUp(SDLEventHelper.getButton(from: &buttonEvent))
             
         case UInt32(SDL_EVENT_WINDOW_FOCUS_LOST.rawValue):
             return .windowFocusLost

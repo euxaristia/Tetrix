@@ -434,9 +434,14 @@ class SDL3Game {
                     }
                     // Pump events multiple times to ensure window manager processes show/raise
                     // This is critical for the window to receive keyboard focus
-                    for _ in 0..<5 {
+                    // SDLWindowHelper.show() already pumps events, but pump more here for safety
+                    for _ in 0..<10 {
                         SDLEventHelper.pumpEvents()
                     }
+                    
+                    // Small delay to ensure window is fully visible and has focus
+                    // This helps on some systems where window manager needs time to process
+                    PlatformHelper.sleep(milliseconds: 50)
                     
                     // Render once more to ensure correct display before window becomes visible
                     render()
