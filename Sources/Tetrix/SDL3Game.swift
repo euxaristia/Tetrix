@@ -1125,15 +1125,15 @@ class SDL3Game {
         // Controls hint - switch between keyboard and controller
         // Position controls text in the side panel, aligned with bottom right corner
         // Since we use logical presentation, all coordinates must be in logical space
-        // Controller has 7 lines (140px), keyboard has 6 lines (120px), plus 20px for "Controls:" label
+        // Controller has 6 lines (120px), keyboard has 5 lines (100px), plus 20px for "Controls:" label
         // Position from logical height bottom: logicalHeight - (max lines * 20) - padding
-        let maxControlsHeight: Int32 = 160 // 7 lines * 20px + 20px label = 160px (controller) or 140px (keyboard)
+        let maxControlsHeight: Int32 = 140 // 6 lines * 20px + 20px label = 140px (controller) or 120px (keyboard)
         let controlsStartY = logicalHeight - maxControlsHeight - 10 // 10px padding from bottom
         drawText(x: panelX, y: controlsStartY, text: "Controls:", r: 150, g: 150, b: 150)
         
         // Determine music status - check if music is actually playing
         let musicIsPlaying = music?.isCurrentlyPlaying ?? false
-        let musicStatusText = musicIsPlaying ? "Music: ON" : "Music: OFF"
+        let musicStatusSuffix = musicIsPlaying ? " (ON)" : " (OFF)"
         let musicStatusColor: (r: UInt8, g: UInt8, b: UInt8) = musicIsPlaying ? (r: 100, g: 255, b: 100) : (r: 255, g: 100, b: 100)
         
         if usingController && gamepad != nil {
@@ -1143,16 +1143,18 @@ class SDL3Game {
             drawText(x: panelX, y: controlsStartY + 60, text: "Up/X: Rotate", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "Opt: Pause", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 100, text: "Share: Restart", r: 130, g: 130, b: 130)
+            // Combined music shortcut and status on one line
             drawText(x: panelX, y: controlsStartY + 120, text: "M: Music", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 140, text: musicStatusText, r: musicStatusColor.r, g: musicStatusColor.g, b: musicStatusColor.b)
+            drawText(x: panelX + 90, y: controlsStartY + 120, text: musicStatusSuffix, r: musicStatusColor.r, g: musicStatusColor.g, b: musicStatusColor.b)
         } else {
             // Keyboard controls
             drawText(x: panelX, y: controlsStartY + 20, text: "WASD/Arrows", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 40, text: "Space: Drop", r: 130, g: 130, b: 130)
                 drawText(x: panelX, y: controlsStartY + 60, text: "ESC: Pause", r: 130, g: 130, b: 130)
             drawText(x: panelX, y: controlsStartY + 80, text: "F11: Fullscreen", r: 130, g: 130, b: 130)
+            // Combined music shortcut and status on one line
             drawText(x: panelX, y: controlsStartY + 100, text: "M: Music", r: 130, g: 130, b: 130)
-            drawText(x: panelX, y: controlsStartY + 120, text: musicStatusText, r: musicStatusColor.r, g: musicStatusColor.g, b: musicStatusColor.b)
+            drawText(x: panelX + 90, y: controlsStartY + 100, text: musicStatusSuffix, r: musicStatusColor.r, g: musicStatusColor.g, b: musicStatusColor.b)
         }
         
         // Present the rendered frame
