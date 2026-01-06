@@ -316,6 +316,13 @@ jobs:
         path: |
           ${{ runner.temp }}/swift
           ${{ runner.temp }}/swift-*
+          ${{ runner.temp }}/swiftpm
+          ${{ runner.temp }}/swiftpm-*
+          ${{ env.LOCALAPPDATA }}/Programs/swift
+          ${{ env.ProgramFiles }}/swift
+          ${{ env.ProgramFiles(x86) }}/swift
+          ${{ env.USERPROFILE }}/.swift
+          ${{ env.USERPROFILE }}/swift
         key: swift-toolchain-windows-6.2.1-${{ runner.os }}
         restore-keys: |
           swift-toolchain-windows-6.2.1-
@@ -325,6 +332,50 @@ jobs:
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
+    
+    - name: Debug Swift installation location (after setup)
+      if: steps.swift-cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        Write-Host "🔍 Debugging where SwiftyLab installed Swift..." -ForegroundColor Yellow
+        Write-Host "RUNNER_TEMP: $env:RUNNER_TEMP" -ForegroundColor Cyan
+        Write-Host "`nChecking RUNNER_TEMP for Swift:" -ForegroundColor Yellow
+        if (Test-Path $env:RUNNER_TEMP) {
+          Get-ChildItem -Path $env:RUNNER_TEMP -Directory | ForEach-Object {
+            Write-Host "  📁 $($_.Name)" -ForegroundColor Gray
+          }
+        }
+        Write-Host "`nSearching for swift.exe recursively:" -ForegroundColor Yellow
+        if (Test-Path $env:RUNNER_TEMP) {
+          $swiftExe = Get-ChildItem -Path $env:RUNNER_TEMP -Filter "swift.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($swiftExe) {
+            Write-Host "  ✅ Found swift.exe at: $($swiftExe.FullName)" -ForegroundColor Green
+            Write-Host "  Directory: $($swiftExe.DirectoryName)" -ForegroundColor Cyan
+          } else {
+            Write-Host "  ❌ swift.exe not found in RUNNER_TEMP" -ForegroundColor Red
+          }
+        }
+        Write-Host "`nChecking common locations:" -ForegroundColor Yellow
+        $commonPaths = @(
+          "$env:RUNNER_TEMP\swift",
+          "$env:RUNNER_TEMP\swift-*",
+          "$env:LOCALAPPDATA\Programs\swift",
+          "C:\Program Files\swift",
+          "$env:USERPROFILE\.swift"
+        )
+        foreach ($path in $commonPaths) {
+          $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+          if ($resolved) {
+            Write-Host "  ✅ $path -> $resolved" -ForegroundColor Green
+          }
+        }
+        Write-Host "`nSwift location from PATH:" -ForegroundColor Yellow
+        $swiftPath = Get-Command swift -ErrorAction SilentlyContinue
+        if ($swiftPath) {
+          Write-Host "  ✅ Swift found at: $($swiftPath.Source)" -ForegroundColor Green
+        } else {
+          Write-Host "  ❌ Swift not in PATH" -ForegroundColor Red
+        }
     
     - name: Configure Swift PATH from cache
       id: configure-swift-path
@@ -470,6 +521,26 @@ jobs:
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
+    
+    - name: Save Swift toolchain to cache (if not already cached)
+      if: steps.swift-cache.outputs.cache-hit != 'true' || steps.configure-swift-path.outputs.swift_not_found == 'true'
+      shell: pwsh
+      run: |
+        Write-Host "💾 Determining where Swift was installed to save to cache..." -ForegroundColor Yellow
+        # Find where Swift was actually installed
+        $swiftExe = Get-Command swift -ErrorAction SilentlyContinue
+        if ($swiftExe) {
+          $swiftDir = $swiftExe.Source | Split-Path
+          $swiftToolchainRoot = $swiftDir | Split-Path | Split-Path
+          Write-Host "Swift found at: $($swiftExe.Source)" -ForegroundColor Green
+          Write-Host "Swift toolchain root: $swiftToolchainRoot" -ForegroundColor Cyan
+          
+          # Note: Cache action will automatically save paths at end of job
+          # But we need to make sure we're caching the right paths
+          # For now, this is informational - the cache action should handle saving
+        } else {
+          Write-Host "❌ Swift not found after setup - cannot determine cache location" -ForegroundColor Red
+        }
     
     - name: Verify Swift installation
       if: steps.swift-cache.outputs.cache-hit == 'true'
