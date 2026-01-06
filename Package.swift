@@ -56,7 +56,6 @@ let package = Package(
         .executableTarget(
             name: "Tetrix",
             dependencies: ["CSDL3", "Tenebris", "CPulseAudio"],
-            // X11Interop is part of CSDL3 module
             path: "Sources/Tetrix",
             exclude: [
                 // No exclusions needed - all Swift files are in Sources/Tetrix
