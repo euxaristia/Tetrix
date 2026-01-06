@@ -238,6 +238,15 @@ struct SDLEventHelper {
         SDL_PumpEvents()
     }
     
+    /// Flush analog stick events from the queue to prevent lag
+    /// This removes SDL_EVENT_GAMEPAD_AXIS_MOTION and SDL_EVENT_JOYSTICK_AXIS_MOTION events
+    static func flushAnalogEvents() {
+        let GAMEPAD_AXIS_MOTION: UInt32 = 0x650  // SDL_EVENT_GAMEPAD_AXIS_MOTION
+        let JOYSTICK_AXIS_MOTION: UInt32 = 0x600  // SDL_EVENT_JOYSTICK_AXIS_MOTION
+        // Flush all analog stick events from the queue
+        SDL_FlushEvents(JOYSTICK_AXIS_MOTION, GAMEPAD_AXIS_MOTION)
+    }
+    
     /// Poll for events - returns true if an event was available
     static func pollEvent(_ event: inout SDL_Event) -> Bool {
         return SDL_PollEvent(&event)
@@ -628,7 +637,31 @@ struct EventPoller {
             return nil
         }
         
-        switch UInt32(sdlEvent.type) {
+        let eventType = UInt32(sdlEvent.type)
+        
+        // Filter out analog stick events immediately - they flood the queue and cause lag
+        // We only use D-pad buttons, so we don't need axis motion events
+        let GAMEPAD_AXIS_MOTION: UInt32 = 0x650  // SDL_EVENT_GAMEPAD_AXIS_MOTION
+        let JOYSTICK_AXIS_MOTION: UInt32 = 0x600  // SDL_EVENT_JOYSTICK_AXIS_MOTION
+        if eventType == GAMEPAD_AXIS_MOTION || eventType == JOYSTICK_AXIS_MOTION {
+            // Skip analog stick events - return nil to continue polling
+            return nil
+        }
+        
+        // Also filter out other gamepad events we don't need
+        let GAMEPAD_TOUCHPAD_DOWN: UInt32 = 0x655
+        let GAMEPAD_TOUCHPAD_MOTION: UInt32 = 0x656
+        let GAMEPAD_TOUCHPAD_UP: UInt32 = 0x657
+        let GAMEPAD_SENSOR_UPDATE: UInt32 = 0x658
+        let GAMEPAD_UPDATE_COMPLETE: UInt32 = 0x659
+        if eventType == GAMEPAD_TOUCHPAD_DOWN || eventType == GAMEPAD_TOUCHPAD_MOTION ||
+           eventType == GAMEPAD_TOUCHPAD_UP || eventType == GAMEPAD_SENSOR_UPDATE ||
+           eventType == GAMEPAD_UPDATE_COMPLETE {
+            // Skip these events too
+            return nil
+        }
+        
+        switch eventType {
         case UInt32(SDL_EVENT_QUIT.rawValue):
             return .quit
             
@@ -666,6 +699,7 @@ struct EventPoller {
             return .windowFocusGained
             
         default:
+            // Skip all other events (including analog stick, touchpad, sensor, etc.)
             return nil
         }
     }

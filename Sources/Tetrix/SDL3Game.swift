@@ -47,7 +47,8 @@ class SDL3Game {
     private var dPadLeftRepeatTimer: TimeInterval = 0
     private var dPadRightHeld = false
     private var dPadRightRepeatTimer: TimeInterval = 0
-    private let dPadHorizontalRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for left/right movement (was 0.1)
+    private let dPadHorizontalRepeatInterval: TimeInterval = 0.03 // Repeat interval for left/right movement
+    private let dPadHorizontalInitialDelay: TimeInterval = 0.15 // Initial delay before first repeat (prevents double-input)
     private var downKeyHeld = false
     private var downKeyRepeatTimer: TimeInterval = 0
     private let downKeyRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for keyboard soft drop
@@ -360,15 +361,29 @@ class SDL3Game {
         let startTime = getCurrentTime()
         lastDropTime = startTime // Initialize drop timer
         var lastFrameTime = startTime
+        var lastPumpTime = startTime
         let targetFPS = 60.0
         let frameTime = 1.0 / targetFPS
+        let pumpInterval = 1.0 / 120.0  // Pump events at 120Hz max (every ~8ms) to avoid controller lag
         
         // Simple, fast game loop - direct access, no threading overhead
         while running {
             let now = getCurrentTime()
             
-            // Process ALL pending events immediately for responsive window controls
-            handleEvents()
+            // Only pump events periodically to avoid performance issues with controllers
+            // When controller is active, skip pumping entirely - it's too slow
+            if usingController {
+                // With controller: never pump, just poll existing queue and flush analog events
+                handleEventsNoPump()
+            } else {
+                // Without controller: pump periodically for window responsiveness
+                if now - lastPumpTime >= pumpInterval {
+                    handleEvents()
+                    lastPumpTime = now
+                } else {
+                    handleEventsNoPump()
+                }
+            }
             
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat(now: now)
@@ -403,27 +418,44 @@ class SDL3Game {
             if now - lastFrameTime >= frameTime {
                 render()
                 lastFrameTime = now
-            } else {
-                // No sleep - busy wait for maximum responsiveness
-                // Process events while waiting for next frame
-                handleEvents()
             }
+            // Don't process events again here - already processed at start of loop
+            // This avoids double-processing and controller event flooding
         }
     }
     
     private func handleEvents() {
         // Pump events from OS into SDL's queue first - critical for window responsiveness on Linux
+        // Skip pumping entirely when controller is active - it's too slow and causes lag
         #if os(Linux)
-        SDLEventHelper.pumpEvents()
+        if !usingController {
+            // Only pump if no controller - pumping is very slow with controllers
+            SDLEventHelper.pumpEvents()
+        } else {
+            // With controller, don't pump at all - just flush analog events from existing queue
+            // SDL will still receive button events, but we avoid the expensive pump operation
+            SDLEventHelper.flushAnalogEvents()
+        }
         #endif
-        
+        handleEventsNoPump()
+    }
+    
+    private func handleEventsNoPump() {
         // Poll for events using Swift-native event system
-        // Process multiple events per call to ensure window responsiveness
+        // Process events efficiently - limit to prevent controller event flooding
+        // Analog stick events are now filtered out in EventPoller, so we can process more button events
         var eventsProcessed = 0
+        let maxEvents = usingController ? 3 : 50  // Very few events when controller is active (analog sticks filtered)
         while let event = EventPoller.poll() {
             eventsProcessed += 1
-            // Limit to prevent infinite loops, but process enough for responsiveness
-            if eventsProcessed > 100 { break }
+            // Limit to prevent infinite loops and controller event flooding
+            if eventsProcessed >= maxEvents { 
+                // If we hit the limit, flush remaining analog events to prevent queue buildup
+                if usingController {
+                    SDLEventHelper.flushAnalogEvents()
+                }
+                break 
+            }
             switch event {
             case .quit:
                 running = false
@@ -535,11 +567,13 @@ class SDL3Game {
             engine.rotate()
         case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
             dPadLeftHeld = true
-            dPadLeftRepeatTimer = now
+            // Set timer to now + initial delay to prevent immediate repeat
+            dPadLeftRepeatTimer = now + dPadHorizontalInitialDelay
             engine.moveLeft() // Immediate action
         case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
             dPadRightHeld = true
-            dPadRightRepeatTimer = now
+            // Set timer to now + initial delay to prevent immediate repeat
+            dPadRightRepeatTimer = now + dPadHorizontalInitialDelay
             engine.moveRight() // Immediate action
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = true
@@ -645,14 +679,16 @@ class SDL3Game {
         }
         
         // Find first available gamepad using Swift-native wrapper
+        // Only check first gamepad to avoid performance issues
         let gamepadIDs = SDLGamepadHelper.getGamepadJoystickIDs()
-        for id in gamepadIDs {
-            if let newGamepad = Gamepad(id: id) {
-                gamepad = newGamepad
-                if let name = newGamepad.name {
-                    print("Gamepad connected: \(name)")
-                }
-                break
+        guard !gamepadIDs.isEmpty else { return }
+        
+        // Only try the first gamepad to avoid delays
+        let id = gamepadIDs[0]
+        if let newGamepad = Gamepad(id: id) {
+            gamepad = newGamepad
+            if let name = newGamepad.name {
+                print("Gamepad connected: \(name)")
             }
         }
     }
