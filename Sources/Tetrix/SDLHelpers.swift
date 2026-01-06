@@ -492,11 +492,11 @@ class Texture {
         guard let texture = SDL_CreateTextureFromSurface(renderer, surface) else { return nil }
         SDL_DestroySurface(surface)
         
-        var width: Float = 0
-        var height: Float = 0
+        var width: Int32 = 0
+        var height: Int32 = 0
         SDL_GetTextureSize(texture, &width, &height)
         
-        return Texture(sdlTexture: texture, width: width, height: height)
+        return Texture(sdlTexture: texture, width: Float(width), height: Float(height))
     }
     
     /// Create texture from text (Linux only - uses SDL3 text rendering)
