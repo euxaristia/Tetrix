@@ -123,6 +123,52 @@ jobs:
         echo "   After this run completes, the Swift toolchain will be cached for next run"
         echo "   Subsequent runs will use the cached version (saving ~2.5 minutes)"
     
+    - name: Save Swift toolchain to cache (verify paths exist)
+      if: steps.swift-cache.outputs.cache-hit != 'true'
+      run: |
+        echo "💾 Verifying Swift installation location for caching..." 
+        echo ""
+        echo "Checking if Swift is installed:"
+        SWIFT_PATH=$(which swift 2>/dev/null || echo "")
+        if [ -n "$SWIFT_PATH" ]; then
+          echo "  ✅ Swift found at: $SWIFT_PATH"
+          SWIFT_DIR=$(dirname "$SWIFT_PATH")
+          TOOLCHAIN_ROOT=$(dirname "$SWIFT_DIR" 2>/dev/null || echo "")
+          echo "  Toolchain root: $TOOLCHAIN_ROOT"
+        else
+          echo "  ❌ Swift not found in PATH"
+        fi
+        echo ""
+        echo "Checking cache paths to see which exist:"
+        CACHE_PATHS=(
+          "${{ runner.temp }}/swift"
+          "${{ runner.temp }}/swift-*"
+          "${{ runner.temp }}/swiftpm"
+          "${{ runner.temp }}/swiftpm-*"
+          "/opt/swift"
+          "$HOME/.swift"
+          "$HOME/.swiftpm"
+        )
+        EXISTING_PATHS=()
+        for path in "${CACHE_PATHS[@]}"; do
+          if [ -d "$path" ] 2>/dev/null || ls -d $path 2>/dev/null | grep -q .; then
+            echo "  ✅ $path exists"
+            EXISTING_PATHS+=("$path")
+          else
+            echo "  ❌ $path does not exist"
+          fi
+        done
+        echo ""
+        if [ ${#EXISTING_PATHS[@]} -eq 0 ]; then
+          echo "⚠️  Warning: None of the cache paths exist!"
+          echo "   The cache may not save properly. Swift might be installed elsewhere."
+          echo "   Check the debug output above to see where Swift is actually installed."
+        else
+          echo "✅ Found ${#EXISTING_PATHS[@]} cache path(s) that exist - cache should save correctly"
+        fi
+        echo ""
+        echo "Note: GitHub Actions cache action will automatically save these paths at the end of the job"
+    
     - name: Get SDL3 commit hash for cache key
       id: sdl3-commit
       run: |
