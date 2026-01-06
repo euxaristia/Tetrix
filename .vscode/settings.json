@@ -1,10 +1,12 @@
 {
-    "lldb.executable": "/usr/bin/lldb",
-    "lldb.library": "/usr/lib/liblldb.so",
+    // Platform-specific tool paths
+    // Windows paths (update these on Linux):
+    //   Linux: "/usr/bin/lldb" -> keep as-is on Linux
+    //   Linux: "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:/usr/lib:${env:LD_LIBRARY_PATH}" -> keep as-is on Linux
+    "lldb.executable": "C:\\Users\\euxaristia\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.0+Asserts\\usr\\bin\\lldb.exe",
     "lldb.adapterEnv": {
-        "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:/usr/lib:${env:LD_LIBRARY_PATH}"
+        // LD_LIBRARY_PATH is Linux-only, removed for Windows
     },
-    "lldb.launch.expressions": "native",
     
     // Performance optimizations for Cursor/VSCode
     "files.watcherExclude": {
@@ -36,12 +38,13 @@
         "**/*.exp": true,
         "**/*.def": true
     },
-    "swift.swiftPath": "/usr/bin/swift",
-    "swift.toolchainPath": "/usr/lib/swift",
-    // sourcekit-lsp settings
-    "swift.sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
-    "sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
-    "sourcekit-lsp.toolchainPath": "/usr/lib/swift",
+    // Swift toolchain paths - Windows (update on Linux to use "/usr/bin/swift", "/usr/lib/swift")
+    "swift.swiftPath": "C:\\Users\\euxaristia\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.0+Asserts\\usr\\bin\\swift.exe",
+    "swift.toolchainPath": "C:\\Users\\euxaristia\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.0+Asserts",
+    // sourcekit-lsp settings - Windows paths (update on Linux to use "/usr/bin/sourcekit-lsp")
+    "swift.sourcekit-lsp.serverPath": "C:\\Users\\euxaristia\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.0+Asserts\\usr\\bin\\sourcekit-lsp.exe",
+    "sourcekit-lsp.serverPath": "C:\\Users\\euxaristia\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.0+Asserts\\usr\\bin\\sourcekit-lsp.exe",
+    "sourcekit-lsp.toolchainPath": "C:\\Users\\euxaristia\\AppData\\Local\\Programs\\Swift\\Toolchains\\6.3.0+Asserts",
     // Suppress notifications/warnings (debugging works, so toolchain is fine)
     "swift.showNotifications": false,
     "swift.diagnostics.enable": false,

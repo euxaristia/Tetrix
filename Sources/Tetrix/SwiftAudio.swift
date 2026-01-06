@@ -44,7 +44,7 @@ class SwiftAudioStream {
         // Create SDL audio spec
         var sdlSpec = SDL_AudioSpec()
         sdlSpec.freq = sampleRate
-        sdlSpec.format = SDL_AudioFormat(rawValue: format)
+        sdlSpec.format = SDL_AudioFormat(rawValue: Int32(format))
         sdlSpec.channels = Int32(channels)
         
         // Create stream WITH a working callback
@@ -126,7 +126,7 @@ class SwiftAudioStream {
             let samplesGenerated = provider(extraBuffer, Int32(extraBufferSize))
             if samplesGenerated > 0 {
                 let bytesToQueue = samplesGenerated * 2
-                let queued = SDL_PutAudioStreamData(stream, extraBuffer, Int32(bytesToQueue))
+                _ = SDL_PutAudioStreamData(stream, extraBuffer, Int32(bytesToQueue))
                 print("Queued additional \(bytesToQueue) bytes")
             }
         }

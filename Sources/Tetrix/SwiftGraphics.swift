@@ -43,18 +43,33 @@ class SwiftWindow {
         var wc = WNDCLASSW()
         wc.lpfnWndProc = DefWindowProcW
         wc.hInstance = hInstance
-        wc.lpszClassName = className.withCString(encodedAs: UTF16.self) { $0 }
-        wc.hbrBackground = GetSysColorBrush(COLOR_WINDOW.rawValue)
-        wc.hCursor = LoadCursorW(nil, IDC_ARROW)
+        var classNameUtf16 = Array(className.utf16)
+        classNameUtf16.append(0) // Null terminator
+        classNameUtf16.withUnsafeBufferPointer { ptr in
+            wc.lpszClassName = UnsafePointer(ptr.baseAddress)
+        }
+        wc.hbrBackground = GetSysColorBrush(Int32(COLOR_WINDOW))
+        // IDC_ARROW = 32512, MAKEINTRESOURCEW equivalent: cast integer to LPWSTR
+        let cursorResource = UnsafePointer<WCHAR>(bitPattern: UInt(32512))!
+        wc.hCursor = LoadCursorW(nil, cursorResource)
         
-        _ = RegisterClassW(&wc)
+        var registeredClassName = Array(className.utf16)
+        registeredClassName.append(0)
+        registeredClassName.withUnsafeBufferPointer { ptr in
+            wc.lpszClassName = UnsafePointer(ptr.baseAddress)
+            _ = RegisterClassW(&wc)
+        }
         
         // Create window
+        var titleUtf16 = Array(title.utf16)
+        titleUtf16.append(0) // Null terminator
+        var classNameUtf16ForWindow = Array(className.utf16)
+        classNameUtf16ForWindow.append(0)
         let hwnd = CreateWindowExW(
             0,
-            className,
-            title.withCString(encodedAs: UTF16.self) { $0 },
-            UInt32(WS_OVERLAPPEDWINDOW | WS_VISIBLE),
+            classNameUtf16ForWindow.withUnsafeBufferPointer { UnsafePointer($0.baseAddress) },
+            titleUtf16.withUnsafeBufferPointer { UnsafePointer($0.baseAddress) },
+            DWORD(UInt32(WS_OVERLAPPEDWINDOW) | UInt32(WS_VISIBLE)),
             CW_USEDEFAULT, CW_USEDEFAULT,
             Int32(width), Int32(height),
             nil, nil, hInstance, nil
@@ -109,11 +124,11 @@ class SwiftWindow {
     
     func setFullscreen(_ fullscreen: Bool) {
         #if os(Windows)
-        var style: UInt32 = 0
+        var style: DWORD = 0
         if fullscreen {
-            style = UInt32(WS_POPUP | WS_VISIBLE)
+            style = DWORD(UInt32(WS_POPUP) | UInt32(WS_VISIBLE))
         } else {
-            style = UInt32(WS_OVERLAPPEDWINDOW | WS_VISIBLE)
+            style = DWORD(UInt32(WS_OVERLAPPEDWINDOW) | UInt32(WS_VISIBLE))
         }
         SetWindowLongPtrW(hwnd, GWL_STYLE, LONG_PTR(style))
         #elseif os(macOS)
@@ -137,7 +152,7 @@ class SwiftWindow {
 /// Swift-native renderer class (replaces SDL_Renderer)
 class SwiftRenderer: RendererProtocol {
     #if os(Windows)
-    private var hdc: HDC?
+    private var _hdc: HDC?
     private var hwnd: HWND?
     #elseif os(macOS)
     var view: NSView?
@@ -153,8 +168,8 @@ class SwiftRenderer: RendererProtocol {
         #if os(Windows)
         guard let hwnd = window.handle else { return nil }
         self.hwnd = hwnd
-        self.hdc = GetDC(hwnd)
-        guard hdc != nil else { return nil }
+        self._hdc = GetDC(hwnd)
+        guard _hdc != nil else { return nil }
         
         #elseif os(macOS)
         guard let nsWindow = window.nsWindow else { return nil }
@@ -169,7 +184,7 @@ class SwiftRenderer: RendererProtocol {
     
     #if os(Windows)
     var hdc: HDC? {
-        return self.hdc
+        return self._hdc
     }
     #endif
     
@@ -191,7 +206,9 @@ class SwiftRenderer: RendererProtocol {
         guard let hdc = hdc, let hwnd = hwnd else { return }
         var rect = RECT()
         GetClientRect(hwnd, &rect)
-        let brush = CreateSolidBrush(RGB(drawColor.r, drawColor.g, drawColor.b))
+        // RGB macro equivalent: (blue << 16) | (green << 8) | red
+        let colorRef = DWORD(drawColor.b) << 16 | DWORD(drawColor.g) << 8 | DWORD(drawColor.r)
+        let brush = CreateSolidBrush(colorRef)
         FillRect(hdc, &rect, brush)
         DeleteObject(brush)
         
@@ -213,7 +230,9 @@ class SwiftRenderer: RendererProtocol {
     func fillRect(_ rect: Rect) {
         #if os(Windows)
         guard let hdc = hdc else { return }
-        let brush = CreateSolidBrush(RGB(drawColor.r, drawColor.g, drawColor.b))
+        // RGB macro equivalent: (blue << 16) | (green << 8) | red
+        let colorRef = DWORD(drawColor.b) << 16 | DWORD(drawColor.g) << 8 | DWORD(drawColor.r)
+        let brush = CreateSolidBrush(colorRef)
         var r = RECT(
             left: LONG(rect.x),
             top: LONG(rect.y),
@@ -245,7 +264,9 @@ class SwiftRenderer: RendererProtocol {
     func drawRect(_ rect: Rect) {
         #if os(Windows)
         guard let hdc = hdc else { return }
-        let pen = CreatePen(PS_SOLID, 1, RGB(drawColor.r, drawColor.g, drawColor.b))
+        // RGB macro equivalent: (blue << 16) | (green << 8) | red
+        let colorRef = DWORD(drawColor.b) << 16 | DWORD(drawColor.g) << 8 | DWORD(drawColor.r)
+        let pen = CreatePen(PS_SOLID, 1, colorRef)
         let oldPen = SelectObject(hdc, pen)
         var r = RECT(
             left: LONG(rect.x),
@@ -253,7 +274,9 @@ class SwiftRenderer: RendererProtocol {
             right: LONG(rect.x + rect.width),
             bottom: LONG(rect.y + rect.height)
         )
-        FrameRect(hdc, &r, CreateSolidBrush(RGB(drawColor.r, drawColor.g, drawColor.b)))
+        // RGB macro equivalent: (blue << 16) | (green << 8) | red
+        let frameColorRef = DWORD(drawColor.b) << 16 | DWORD(drawColor.g) << 8 | DWORD(drawColor.r)
+        FrameRect(hdc, &r, CreateSolidBrush(frameColorRef))
         SelectObject(hdc, oldPen)
         DeleteObject(pen)
         

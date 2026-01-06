@@ -3,13 +3,17 @@
  * This bypasses SDL3's crashing resume function
  */
 
+#ifdef __linux__
 #include <pulse/simple.h>
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "include/PulseAudioWrapper.h"
 
+#ifdef __linux__
 typedef struct {
     pa_simple *pa;
     int sample_rate;
@@ -82,3 +86,29 @@ void pulse_audio_destroy(void* context) {
     
     free(ctx);
 }
+#else
+// Windows stub implementations - SDL3 handles audio on Windows
+void* pulse_audio_create(int sample_rate, int channels, int format) {
+    (void)sample_rate;
+    (void)channels;
+    (void)format;
+    return NULL;  // Return NULL to indicate PulseAudio is not available
+}
+
+int pulse_audio_write(void* context, const void* data, size_t bytes) {
+    (void)context;
+    (void)data;
+    (void)bytes;
+    return 0;  // Return 0 to indicate failure
+}
+
+int pulse_audio_drain(void* context) {
+    (void)context;
+    return 0;  // Return 0 to indicate failure
+}
+
+void pulse_audio_destroy(void* context) {
+    (void)context;
+    // No-op on Windows
+}
+#endif

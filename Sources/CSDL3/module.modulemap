@@ -5,8 +5,5 @@ module CSDL3 {
     export *
 }
 
-module PulseAudioWrapper {
-    header "PulseAudioWrapper.h"
-    link "pulse"
-    export *
-}
+// PulseAudioWrapper functions are accessed via @_silgen_name in Swift
+// No module needed - avoids linking issues on Windows

@@ -22,14 +22,9 @@ private func getCurrentTime() -> TimeInterval {
 #endif
 
 class SDL3Game {
-    // Swift-native window/renderer (Windows, macOS) or SDL3 fallback (Linux)
-    #if os(Linux)
-    private var window: OpaquePointer?  // SDL3 window on Linux
-    private var renderer: RendererProtocol?     // SDL3 renderer wrapper on Linux
-    #else
-    private var swiftWindow: SwiftWindow?
-    private var renderer: RendererProtocol?  // Swift-native renderer on Windows/macOS
-    #endif
+    // Use SDL3 for rendering on all platforms
+    private var window: OpaquePointer?  // SDL3 window
+    private var renderer: RendererProtocol?     // SDL3 renderer wrapper
     // Font removed - using Swift-native text renderer
     private let engine: TetrisEngine
     private var threadSafeState: ThreadSafeGameState?
@@ -258,47 +253,105 @@ class SDL3Game {
             return
         }
         #else
-        // Windows/macOS: Use Swift-native window/renderer (no SDL3 needed for graphics)
+        // Windows/macOS: Use SDL3 for all rendering (same as Linux for consistency)
+        // Check what's already initialized
+        let videoFlag: UInt32 = 0x00000020  // SDL_INIT_VIDEO
+        let gamepadFlag: UInt32 = 0x00002000  // SDL_INIT_GAMEPAD
+        let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
+        let eventsFlag: UInt32 = 0x00004000  // SDL_INIT_EVENTS
+        let allFlags: UInt32 = videoFlag | gamepadFlag | audioFlag | eventsFlag
+        
+        // Clear any previous errors
+        SDL_ClearError()
+        
+        // Initialize SDL subsystems
+        let initResult = SDL_Init(allFlags)
+        
+        if initResult != 0 {
+            let errorMsg = String.sdlError() ?? "unknown error"
+            print("Warning: SDL_Init failed: \(errorMsg), trying subsystems separately...")
+            SDL_ClearError()
+            
+            // Events MUST be initialized first in SDL3
+            SDL_ClearError()
+            let eventsResult = SDL_InitSubSystem(eventsFlag)
+            if eventsResult != 0 {
+                let errorMsg = String.sdlError() ?? "unknown error"
+                print("Error: SDL events subsystem failed (code: \(eventsResult)): \(errorMsg)")
+                // Check if it's actually initialized despite error code
+                let wasInit = SDL_WasInit(eventsFlag)
+                if wasInit != 0 {
+                    print("  Note: SDL_WasInit shows events subsystem IS initialized (0x\(String(wasInit, radix: 16)))")
+                }
+            } else {
+                print("SDL events subsystem initialized successfully")
+            }
+            
+            // Video (required)
+            SDL_ClearError()
+            let videoResult = SDL_InitSubSystem(videoFlag)
+            if videoResult != 0 {
+                let errorMsg = String.sdlError() ?? "unknown error"
+                print("Error: SDL video subsystem failed (code: \(videoResult)): \(errorMsg)")
+                // Check if it's actually initialized despite error code
+                let wasInit = SDL_WasInit(videoFlag)
+                if wasInit != 0 {
+                    print("  Note: SDL_WasInit shows video subsystem IS initialized (0x\(String(wasInit, radix: 16)))")
+                    print("  Continuing despite error code...")
+                } else {
+                    print("  SDL_WasInit confirms video subsystem NOT initialized - cannot continue")
+                    return
+                }
+            } else {
+                print("SDL video subsystem initialized successfully")
+            }
+            
+            // Gamepad and audio (optional)
+            SDL_ClearError()
+            let gamepadResult = SDL_InitSubSystem(gamepadFlag)
+            if gamepadResult != 0 {
+                let errorMsg = String.sdlError() ?? "unknown error"
+                print("Warning: SDL gamepad subsystem failed (code: \(gamepadResult)): \(errorMsg)")
+            } else {
+                print("SDL gamepad subsystem initialized successfully")
+            }
+            
+            SDL_ClearError()
+            let audioResult = SDL_InitSubSystem(audioFlag)
+            if audioResult != 0 {
+                let errorMsg = String.sdlError() ?? "unknown error"
+                print("Warning: SDL audio subsystem failed (code: \(audioResult)): \(errorMsg)")
+            } else {
+                print("SDL audio subsystem initialized successfully")
+            }
+        }
+        
+        // Create SDL3 window
         let title = "Tetrix"
-        // Create Swift-native window
         let windowFlags = WindowFlag.combine(.hidden, .resizable)
-        swiftWindow = SwiftWindow(title: title, width: windowWidth, height: windowHeight, flags: windowFlags)
-        if swiftWindow == nil {
-            print("Failed to create window")
+        
+        SDL_ClearError()
+        window = SDLHelper.createWindow(title: title, width: windowWidth, height: windowHeight, flags: windowFlags)
+        if window == nil {
+            let errorMsg = SDLHelper.errorMessage()
+            print("Failed to create window: \(errorMsg)")
             return
         }
         
-        // Create Swift-native renderer
-        if let swiftRenderer = SwiftRenderer(window: swiftWindow!) {
-            renderer = swiftRenderer
+        print("Window created successfully (hidden)")
+        
+        // Create SDL3 renderer
+        if let sdlRenderer = SDLRenderHelper.create(window: window) {
+            renderer = Renderer(sdlRenderer: sdlRenderer)
+            
+            // Initialize text renderer and set renderer (works on all platforms with SDL3)
+            if let textRenderer = SwiftTextRenderer() {
+                textRenderer.setRenderer(renderer!)
+                self.textRenderer = textRenderer
+            }
         } else {
             print("Failed to create renderer")
             return
-        }
-        
-        // Still need SDL3 for gamepad and audio on Windows/macOS
-        let sdlResult = SDLHelper.initialize(subsystems: .gamepad, .audio)
-        if !sdlResult.isSuccess {
-            print("Warning: SDL_Init for gamepad/audio failed: \(sdlResult.errorMessage ?? "Unknown error")")
-        }
-        
-        // Initialize Swift-native text renderer (replaces SDL3_ttf)
-        #if os(Windows)
-        // Windows: Get HDC from Swift renderer
-        if let swiftRenderer = renderer as? SwiftRenderer, let hdc = swiftRenderer.hdc {
-            textRenderer = SwiftTextRenderer(hdc: hdc)
-        }
-        #elseif os(macOS)
-        // macOS: Initialize text renderer and set view
-        if let textRenderer = SwiftTextRenderer(), 
-           let swiftRenderer = renderer as? SwiftRenderer,
-           let view = swiftRenderer.view {
-            textRenderer.setView(view)
-            self.textRenderer = textRenderer
-        }
-        #endif
-        if textRenderer == nil {
-            print("Warning: Failed to initialize text renderer, text rendering disabled")
         }
         #endif
         
@@ -314,24 +367,15 @@ class SDL3Game {
         // Render initial frame while window is hidden
         render()
         
-        #if os(Linux)
-        // Linux: Defer window showing to first frame of run loop
-        // This ensures SDL event system is fully initialized before Wayland operations
-        // Window will be shown in run() method after first event pump
-        // Logical presentation will be set after window is shown to ensure correct aspect ratio
-        #else
-        // Windows/macOS: Use Swift-native window operations
-        // Apply fullscreen state if it was saved
+        // Apply fullscreen state if it was saved (applies to all platforms)
         if isFullscreen {
-            swiftWindow?.setFullscreen(true)
+            if let sdlWindow = window {
+                _ = SDL_SetWindowFullscreen(sdlWindow, true)
+                if let sdlRenderer = renderer?.sdlHandle {
+                    _ = SDL_SetRenderLogicalPresentation(sdlRenderer, logicalWidth, logicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX)
+                }
+            }
         }
-        
-        // Now show the window after first frame is rendered
-        swiftWindow?.show()
-        
-        // Always maximize the window on startup
-        swiftWindow?.maximize()
-        #endif
         
         // Start playing the classic Tetris theme if music is enabled
         if musicEnabled {
@@ -343,13 +387,8 @@ class SDL3Game {
         gamepad?.close()
         gamepad = nil
         textRenderer = nil
-        #if os(Linux)
         renderer = nil
         SDLHelper.destroyWindow(window)
-        #else
-        renderer = nil
-        swiftWindow = nil
-        #endif
         SDLHelper.quit()
     }
     
@@ -364,23 +403,21 @@ class SDL3Game {
         while running {
             let now = getCurrentTime()
             
-            // Window is already visible (created without HIDDEN flag)
-            // Just apply fullscreen on first frame if needed
-            #if os(Linux)
+            // Window is created hidden - show it on first frame after SDL is ready
+            // This works on all platforms now (Linux and Windows both use SDL3)
             if !windowShown {
-                if let window = window {
+                if let sdlWindow = window {
                     // Pump events first to ensure SDL is ready
                     SDLEventHelper.pumpEvents()
                     // Try to show the window - wrap in error handling
-                    // Note: This may crash on some SDL3/Wayland setups
                     SDL_ClearError()
-                    SDLWindowHelper.show(window: window)
+                    SDLWindowHelper.show(window: sdlWindow)
                     if let error = String.sdlError(), !error.isEmpty {
                         print("Warning: Error showing window: \(error)")
                     } else {
                         print("Window shown successfully")
                     }
-                    // Pump events again to let Wayland/X11 process the show
+                    // Pump events again to let window manager process the show
                     SDLEventHelper.pumpEvents()
                     
                     // Set logical presentation after window is shown to ensure correct aspect ratio
@@ -392,7 +429,6 @@ class SDL3Game {
                     windowShown = true
                 }
             }
-            #endif
             
             // Always pump events every frame for responsive input
             // Flush analog events when controller is active to prevent queue buildup
@@ -439,14 +475,12 @@ class SDL3Game {
     
     private func handleEvents() {
         // Pump events from OS into SDL's queue first - critical for input responsiveness
-        // Always pump every frame to ensure no input is missed
-        #if os(Linux)
+        // Always pump every frame to ensure no input is missed (works on all platforms with SDL3)
         SDLEventHelper.pumpEvents()
         // Flush analog events immediately after pumping to prevent queue buildup
         if usingController {
             SDLEventHelper.flushAnalogEvents()
         }
-        #endif
         handleEventsNoPump()
     }
     
@@ -733,22 +767,15 @@ class SDL3Game {
     
     private func toggleFullscreen() {
         isFullscreen.toggle()
-        #if os(Linux)
-        guard let window = window, let renderer = renderer else { return }
-        // Toggle fullscreen using SDL3
-        _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: isFullscreen)
+        guard let sdlWindow = window, let renderer = renderer else { return }
+        // Toggle fullscreen using SDL3 (works on all platforms)
+        _ = SDLWindowHelper.setFullscreen(window: sdlWindow, fullscreen: isFullscreen)
         
         // Always use integer scale mode for sharp scaling in both windowed and fullscreen modes
         // This ensures consistent scaling and maintains aspect ratio perfectly
         if let sdlRenderer = renderer.sdlHandle {
             _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
         }
-        #else
-        guard let window = swiftWindow else { return }
-        // Toggle fullscreen using Swift-native window
-        window.setFullscreen(isFullscreen)
-        // TODO: Implement logical presentation/scaling for Swift-native renderer
-        #endif
         saveSettings()
     }
     

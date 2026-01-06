@@ -1,0 +1,4 @@
+module CPulseAudio {
+    header "include/PulseAudioWrapper.h"
+    export *
+}

@@ -17,14 +17,11 @@ let package = Package(
         .target(
             name: "CSDL3",
             path: "Sources/CSDL3",
-            // C module with PulseAudio wrapper for audio
-            sources: ["PulseAudioWrapper.c"],
+            // C module for SDL3 headers only (no source files)
             cSettings: [
                 .headerSearchPath("include"),
                 // Windows: Add header path for statically built SDL3
-                .headerSearchPath("sdl3-headers", .when(platforms: [.windows])),
-                // Linux: Add PulseAudio compiler flags
-                .unsafeFlags(["-D_REENTRANT"], .when(platforms: [.linux]))
+                .headerSearchPath("sdl3-headers", .when(platforms: [.windows]))
             ],
             linkerSettings: [
                 // Windows: Link against static libraries (built in CI, renamed to standard names)
@@ -32,14 +29,26 @@ let package = Package(
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
                 .linkedLibrary("SDL3")
-                // Note: SDL3 automatically handles both X11 and Wayland - no need to link X11 directly
-                // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
-                // Note: PulseAudio is linked by the executable target below
+            ]
+        ),
+        .target(
+            name: "CPulseAudio",
+            path: "Sources/CPulseAudio",
+            sources: ["PulseAudioWrapper.c"],
+            publicHeadersPath: "include",
+            // C module with PulseAudio wrapper for audio (Linux only, Windows has stubs)
+            cSettings: [
+                // Linux: Add PulseAudio compiler flags
+                .unsafeFlags(["-D_REENTRANT"], .when(platforms: [.linux]))
+            ],
+            linkerSettings: [
+                // Linux: Link PulseAudio libraries
+                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux]))
             ]
         ),
         .executableTarget(
             name: "Tetrix",
-            dependencies: ["CSDL3", "Tenebris"],
+            dependencies: ["CSDL3", "Tenebris", "CPulseAudio"],
             // X11Interop is part of CSDL3 module
             path: "Sources/Tetrix",
             exclude: [
@@ -60,10 +69,9 @@ let package = Package(
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3"),
-                // Linux: Link PulseAudio (needed by CSDL3's PulseAudioWrapper)
-                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux]))
+                .linkedLibrary("SDL3")
                 // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
+                // Note: PulseAudio is linked by CPulseAudio target
             ]
         )
     ]

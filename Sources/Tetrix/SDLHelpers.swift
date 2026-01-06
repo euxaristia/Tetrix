@@ -1,6 +1,10 @@
 import Foundation
 import CSDL3
 
+#if os(Windows)
+import WinSDK
+#endif
+
 // Swift wrappers to reduce C interop code
 
 extension String {
@@ -136,15 +140,15 @@ enum LogicalPresentationMode {
     func toSDL() -> SDL_RendererLogicalPresentation {
         switch self {
         case .disabled:
-            return SDL_LOGICAL_PRESENTATION_DISABLED
+            return UInt32(SDL_LOGICAL_PRESENTATION_DISABLED.rawValue)
         case .letterbox:
-            return SDL_LOGICAL_PRESENTATION_LETTERBOX
+            return UInt32(SDL_LOGICAL_PRESENTATION_LETTERBOX.rawValue)
         case .overscan:
-            return SDL_LOGICAL_PRESENTATION_OVERSCAN
+            return UInt32(SDL_LOGICAL_PRESENTATION_OVERSCAN.rawValue)
         case .integerScale:
-            return SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+            return UInt32(SDL_LOGICAL_PRESENTATION_INTEGER_SCALE.rawValue)
         case .stretch:
-            return SDL_LOGICAL_PRESENTATION_STRETCH
+            return UInt32(SDL_LOGICAL_PRESENTATION_STRETCH.rawValue)
         }
     }
 }
@@ -198,12 +202,13 @@ struct SDLWindowHelper {
     
     /// Set render logical presentation (uses Swift-native mode enum)
     static func setLogicalPresentation(renderer: OpaquePointer?, width: Int32, height: Int32, mode: LogicalPresentationMode) -> Bool {
-        return SDL_SetRenderLogicalPresentation(renderer, width, height, mode.toSDL())
+        let rawValue = mode.toSDL()
+        return SDL_SetRenderLogicalPresentation(renderer, width, height, CSDL3.SDL_RendererLogicalPresentation(rawValue: Int32(rawValue)))
     }
     
     /// Set render logical presentation (legacy C type version)
     static func setLogicalPresentation(renderer: OpaquePointer?, width: Int32, height: Int32, mode: SDL_RendererLogicalPresentation) -> Bool {
-        return SDL_SetRenderLogicalPresentation(renderer, width, height, mode)
+        return SDL_SetRenderLogicalPresentation(renderer, width, height, CSDL3.SDL_RendererLogicalPresentation(rawValue: Int32(mode)))
     }
     
     /// Show window
@@ -255,7 +260,7 @@ struct SDLEventHelper {
     /// Get keyboard event scancode (Swift wrapper for cleaner access)
     static func getScancode(from keyEvent: UnsafePointer<SDL_KeyboardEvent>) -> SDL_Scancode {
         // scancode is already SDL_Scancode in the original headers
-        return keyEvent.pointee.scancode
+        return UInt32(keyEvent.pointee.scancode.rawValue)
     }
     
     /// Get keyboard event repeat flag
@@ -309,7 +314,9 @@ struct PlatformHelper {
     /// Sleep for specified milliseconds
     static func sleep(milliseconds: UInt32) {
         #if os(Windows)
-        Sleep(milliseconds)
+        // Sleep function is available from Windows API
+        let sleepTime = DWORD(milliseconds)
+        _ = WinSDK.Sleep(sleepTime)
         #else
         usleep(UInt32(milliseconds * 1000)) // Convert ms to microseconds
         #endif
@@ -590,41 +597,42 @@ enum KeyCode {
     case unknown(UInt32)
     
     init(from scancode: SDL_Scancode) {
-        switch scancode {
-        case SDL_SCANCODE_A: self = .a
-        case SDL_SCANCODE_B: self = .b
-        case SDL_SCANCODE_C: self = .c
-        case SDL_SCANCODE_D: self = .d
-        case SDL_SCANCODE_E: self = .e
-        case SDL_SCANCODE_F: self = .f
-        case SDL_SCANCODE_G: self = .g
-        case SDL_SCANCODE_H: self = .h
-        case SDL_SCANCODE_I: self = .i
-        case SDL_SCANCODE_J: self = .j
-        case SDL_SCANCODE_K: self = .k
-        case SDL_SCANCODE_L: self = .l
-        case SDL_SCANCODE_M: self = .m
-        case SDL_SCANCODE_N: self = .n
-        case SDL_SCANCODE_O: self = .o
-        case SDL_SCANCODE_P: self = .p
-        case SDL_SCANCODE_Q: self = .q
-        case SDL_SCANCODE_R: self = .r
-        case SDL_SCANCODE_S: self = .s
-        case SDL_SCANCODE_T: self = .t
-        case SDL_SCANCODE_U: self = .u
-        case SDL_SCANCODE_V: self = .v
-        case SDL_SCANCODE_W: self = .w
-        case SDL_SCANCODE_X: self = .x
-        case SDL_SCANCODE_Y: self = .y
-        case SDL_SCANCODE_Z: self = .z
-        case SDL_SCANCODE_SPACE: self = .space
-        case SDL_SCANCODE_ESCAPE: self = .escape
-        case SDL_SCANCODE_LEFT: self = .left
-        case SDL_SCANCODE_RIGHT: self = .right
-        case SDL_SCANCODE_UP: self = .up
-        case SDL_SCANCODE_DOWN: self = .down
-        case SDL_SCANCODE_F11: self = .f11
-        default: self = .unknown(scancode.rawValue)
+        let scancodeValue = UInt32(scancode)
+        switch scancodeValue {
+        case UInt32(SDL_SCANCODE_A.rawValue): self = .a
+        case UInt32(SDL_SCANCODE_B.rawValue): self = .b
+        case UInt32(SDL_SCANCODE_C.rawValue): self = .c
+        case UInt32(SDL_SCANCODE_D.rawValue): self = .d
+        case UInt32(SDL_SCANCODE_E.rawValue): self = .e
+        case UInt32(SDL_SCANCODE_F.rawValue): self = .f
+        case UInt32(SDL_SCANCODE_G.rawValue): self = .g
+        case UInt32(SDL_SCANCODE_H.rawValue): self = .h
+        case UInt32(SDL_SCANCODE_I.rawValue): self = .i
+        case UInt32(SDL_SCANCODE_J.rawValue): self = .j
+        case UInt32(SDL_SCANCODE_K.rawValue): self = .k
+        case UInt32(SDL_SCANCODE_L.rawValue): self = .l
+        case UInt32(SDL_SCANCODE_M.rawValue): self = .m
+        case UInt32(SDL_SCANCODE_N.rawValue): self = .n
+        case UInt32(SDL_SCANCODE_O.rawValue): self = .o
+        case UInt32(SDL_SCANCODE_P.rawValue): self = .p
+        case UInt32(SDL_SCANCODE_Q.rawValue): self = .q
+        case UInt32(SDL_SCANCODE_R.rawValue): self = .r
+        case UInt32(SDL_SCANCODE_S.rawValue): self = .s
+        case UInt32(SDL_SCANCODE_T.rawValue): self = .t
+        case UInt32(SDL_SCANCODE_U.rawValue): self = .u
+        case UInt32(SDL_SCANCODE_V.rawValue): self = .v
+        case UInt32(SDL_SCANCODE_W.rawValue): self = .w
+        case UInt32(SDL_SCANCODE_X.rawValue): self = .x
+        case UInt32(SDL_SCANCODE_Y.rawValue): self = .y
+        case UInt32(SDL_SCANCODE_Z.rawValue): self = .z
+        case UInt32(SDL_SCANCODE_SPACE.rawValue): self = .space
+        case UInt32(SDL_SCANCODE_ESCAPE.rawValue): self = .escape
+        case UInt32(SDL_SCANCODE_LEFT.rawValue): self = .left
+        case UInt32(SDL_SCANCODE_RIGHT.rawValue): self = .right
+        case UInt32(SDL_SCANCODE_UP.rawValue): self = .up
+        case UInt32(SDL_SCANCODE_DOWN.rawValue): self = .down
+        case UInt32(SDL_SCANCODE_F11.rawValue): self = .f11
+        default: self = .unknown(scancodeValue)
         }
     }
 }
