@@ -35,8 +35,7 @@ let package = Package(
             name: "CPulseAudio",
             path: "Sources/CPulseAudio",
             sources: [
-                "PulseAudioWrapper.c",
-                "WASAPIWrapper.c"
+                "PulseAudioWrapper.c"
             ],
             publicHeadersPath: "include",
             // C module with PulseAudio wrapper for Linux and WASAPI wrapper for Windows

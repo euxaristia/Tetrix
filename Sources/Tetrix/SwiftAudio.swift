@@ -108,15 +108,11 @@ class SwiftAudioStream {
             }
         }
         
-        // Try to resume audio device - this may crash on some Windows systems
-        // Wrap in a do-catch or use a safer approach
-        // For now, skip resume and rely on auto-start when buffer fills
-        // This prevents crashes while still allowing audio playback to work
-        
-        // Note: Some systems auto-start playback when enough data is queued
-        // If audio doesn't play, it may require manual resume, but that can crash
-        // So we'll queue data and hope it auto-starts
-        print("Audio queued - playback should start automatically when buffer fills")
+        // SDL_ResumeAudioStreamDevice crashes on Windows, so we can't use it
+        // Audio may not play without resume, but we can't crash the game
+        // This is why native Windows audio (WASAPI) is needed
+        print("Audio queued - playback may not start on Windows without resume (which crashes)")
+        print("  Consider enabling WASAPI for native Windows audio support")
         
         // Start a background thread to continuously generate and queue audio
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
