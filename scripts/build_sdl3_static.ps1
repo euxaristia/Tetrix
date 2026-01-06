@@ -185,7 +185,7 @@ if (-not $sdl3Lib) {
 
 if ($sdl3Lib) {
     # Copy to project root as SDL3.lib
-    $projectRoot = Split-Path -Parent $PSCommandPath
+    $projectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
     $targetLib = Join-Path $projectRoot "SDL3.lib"
     Copy-Item $sdl3Lib.FullName $targetLib -Force
     Write-Host "`nSuccessfully built and copied SDL3 static library!" -ForegroundColor Green

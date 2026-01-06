@@ -5,8 +5,11 @@
 
 Write-Host "Building statically linked release executable..." -ForegroundColor Cyan
 
+# Get project root (parent of scripts directory)
+$projectRoot = Split-Path -Parent $PSScriptRoot
+
 # Check if SDL3.lib exists, build it if missing
-$sdl3LibPath = Join-Path $PSScriptRoot "SDL3.lib"
+$sdl3LibPath = Join-Path $projectRoot "SDL3.lib"
 if (-not (Test-Path $sdl3LibPath)) {
     Write-Host "SDL3.lib not found. Building SDL3 as a static library..." -ForegroundColor Yellow
     & "$PSScriptRoot\build_sdl3_static.ps1"
@@ -20,17 +23,21 @@ if (-not (Test-Path $sdl3LibPath)) {
 
 # Build release with maximum optimization and static linking
 Write-Host "Building release executable..." -ForegroundColor Yellow
+# Change to project root for build
+Push-Location $projectRoot
 # Tenebris obfuscation is automatically applied in release builds (configured in Package.swift)
 $buildResult = swift build -c release --static-swift-stdlib 2>&1
+$buildExitCode = $LASTEXITCODE
+Pop-Location
 
-if ($LASTEXITCODE -ne 0) {
+if ($buildExitCode -ne 0) {
     Write-Host "Build failed!" -ForegroundColor Red
     $buildResult | Write-Host
     exit 1
 }
 
 # Find the executable
-$exePath = ".build\x86_64-unknown-windows-msvc\release\Tetrix.exe"
+$exePath = Join-Path $projectRoot ".build\x86_64-unknown-windows-msvc\release\Tetrix.exe"
 if (-not (Test-Path $exePath)) {
     Write-Host "Error: Executable not found at $exePath" -ForegroundColor Red
     exit 1

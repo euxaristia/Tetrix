@@ -384,16 +384,11 @@ jobs:
       id: swift-cache
       with:
         path: |
-          ${{ env.LOCALAPPDATA }}/Programs/Swift/Toolchains
+          C:\Users\runneradmin\AppData\Local\Programs\Swift
           ${{ runner.temp }}/swift
           ${{ runner.temp }}/swift-*
           ${{ runner.temp }}/swiftpm
           ${{ runner.temp }}/swiftpm-*
-          ${{ env.LOCALAPPDATA }}/Programs/swift
-          ${{ env.ProgramFiles }}/swift
-          C:/Program Files (x86)/swift
-          ${{ env.USERPROFILE }}/.swift
-          ${{ env.USERPROFILE }}/swift
         key: swift-toolchain-windows-6.2.1-${{ runner.os }}
         restore-keys: |
           swift-toolchain-windows-6.2.1-
@@ -578,6 +573,47 @@ jobs:
           }
         }
         
+        # Method 4: Check the cached Swift location (C:\Users\runneradmin\AppData\Local\Programs\Swift)
+        if (-not $swiftFound) {
+          $swiftInstallPaths = @(
+            "C:\Users\runneradmin\AppData\Local\Programs\Swift",
+            "$env:LOCALAPPDATA\Programs\Swift"
+          )
+          foreach ($basePath in $swiftInstallPaths) {
+            if (Test-Path $basePath) {
+              Write-Host "Checking Swift installation path: $basePath" -ForegroundColor Gray
+              # Check Toolchains subdirectory first (most common location)
+              $toolchainsPath = Join-Path $basePath "Toolchains"
+              if (Test-Path $toolchainsPath) {
+                Write-Host "  Found Toolchains directory, searching..." -ForegroundColor Gray
+                $toolchainDirs = Get-ChildItem -Path $toolchainsPath -Directory -ErrorAction SilentlyContinue
+                foreach ($toolchainDir in $toolchainDirs) {
+                  $swiftExe = Join-Path $toolchainDir.FullName "usr\bin\swift.exe"
+                  Write-Host "    Checking: $swiftExe" -ForegroundColor DarkGray
+                  if (Test-Path $swiftExe) {
+                    $swiftBin = Join-Path $toolchainDir.FullName "usr\bin"
+                    Write-Host "✅ Found Swift at: $swiftExe" -ForegroundColor Green
+                    $swiftFound = $true
+                    break
+                  }
+                }
+                if ($swiftFound) { break }
+              }
+              # Fallback: Search for swift.exe recursively in this path
+              if (-not $swiftFound) {
+                Write-Host "  Searching recursively for swift.exe..." -ForegroundColor Gray
+                $swiftExeFiles = Get-ChildItem -Path $basePath -Filter "swift.exe" -Recurse -ErrorAction SilentlyContinue -Depth 5 | Select-Object -First 1
+                if ($swiftExeFiles) {
+                  $swiftBin = $swiftExeFiles.DirectoryName
+                  Write-Host "✅ Found Swift at: $($swiftExeFiles.FullName)" -ForegroundColor Green
+                  $swiftFound = $true
+                  break
+                }
+              }
+            }
+          }
+        }
+        
         if ($swiftFound -and $swiftBin) {
           # Add to PATH for this step
           $env:Path = "$swiftBin;$env:Path"
@@ -639,34 +675,78 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "💾 Verifying Swift installation location for caching..." -ForegroundColor Yellow
+        Write-Host ""
+        
         # Find where Swift was actually installed
         $swiftExe = Get-Command swift -ErrorAction SilentlyContinue
-        if ($swiftExe) {
-          $swiftDir = $swiftExe.Source | Split-Path
-          $swiftToolchainRoot = $swiftDir | Split-Path | Split-Path
-          Write-Host "Swift found at: $($swiftExe.Source)" -ForegroundColor Green
-          Write-Host "Swift toolchain root: $swiftToolchainRoot" -ForegroundColor Cyan
-          
-          # Verify the cache path exists
-          $cachePath = "$env:LOCALAPPDATA\Programs\Swift\Toolchains"
-          if (Test-Path $cachePath) {
-            Write-Host "✅ Cache path exists: $cachePath" -ForegroundColor Green
-            Write-Host "   Toolchains found:" -ForegroundColor Cyan
-            Get-ChildItem -Path $cachePath -Directory | ForEach-Object {
-              Write-Host "     - $($_.Name)" -ForegroundColor Gray
-            }
-            Write-Host ""
-            Write-Host "✅ Cache should save correctly - Swift toolchain is in the cached location!" -ForegroundColor Green
-          } else {
-            Write-Host "⚠️  Cache path does not exist: $cachePath" -ForegroundColor Yellow
-            Write-Host "   Swift is installed at: $swiftToolchainRoot" -ForegroundColor Cyan
-            Write-Host "   This may indicate the installation location changed" -ForegroundColor Yellow
-          }
-          
-          Write-Host ""
-          Write-Host "Note: GitHub Actions cache action will automatically save these paths at the end of the job" -ForegroundColor Gray
-        } else {
+        if (-not $swiftExe) {
           Write-Host "❌ Swift not found after setup - cannot determine cache location" -ForegroundColor Red
+          exit 1
+        }
+        
+        $swiftDir = $swiftExe.Source | Split-Path
+        $swiftToolchainRoot = $swiftDir | Split-Path | Split-Path
+        Write-Host "Swift installation details:" -ForegroundColor Cyan
+        Write-Host "  Swift executable: $($swiftExe.Source)" -ForegroundColor Gray
+        Write-Host "  Toolchain root: $swiftToolchainRoot" -ForegroundColor Gray
+        
+        # Check both the absolute path and the environment variable path
+        $cachePaths = @(
+          "C:\Users\runneradmin\AppData\Local\Programs\Swift",
+          "$env:LOCALAPPDATA\Programs\Swift"
+        )
+        
+        $cachePathToVerify = $null
+        foreach ($cachePath in $cachePaths) {
+          if (Test-Path $cachePath) {
+            Write-Host ""
+            Write-Host "✅ Cache path exists: $cachePath" -ForegroundColor Green
+            Write-Host "   Directory contents:" -ForegroundColor Cyan
+            $contents = Get-ChildItem -Path $cachePath -Directory -ErrorAction SilentlyContinue
+            if ($contents) {
+              foreach ($item in $contents) {
+                $size = if (Test-Path $item.FullName) {
+                  $dirSize = (Get-ChildItem -Path $item.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                  if ($dirSize) { " ($([math]::Round($dirSize / 1MB, 2)) MB)" } else { "" }
+                } else { "" }
+                Write-Host "     - $($item.Name)$size" -ForegroundColor Gray
+              }
+            } else {
+              Write-Host "     (empty)" -ForegroundColor DarkGray
+            }
+            
+            # Verify Toolchains subdirectory exists
+            $toolchainsPath = Join-Path $cachePath "Toolchains"
+            if (Test-Path $toolchainsPath) {
+              Write-Host "   Toolchains subdirectory:" -ForegroundColor Cyan
+              $toolchains = Get-ChildItem -Path $toolchainsPath -Directory -ErrorAction SilentlyContinue
+              foreach ($toolchain in $toolchains) {
+                $swiftExeCheck = Join-Path $toolchain.FullName "usr\bin\swift.exe"
+                $status = if (Test-Path $swiftExeCheck) { "✅" } else { "⚠️ " }
+                Write-Host "     $status $($toolchain.Name)" -ForegroundColor $(if (Test-Path $swiftExeCheck) { "Green" } else { "Yellow" })
+              }
+            }
+            
+            $cachePathToVerify = $cachePath
+            break
+          }
+        }
+        
+        if (-not $cachePathToVerify) {
+          Write-Host ""
+          Write-Host "⚠️  Warning: Cache path does not exist!" -ForegroundColor Yellow
+          Write-Host "   Expected: C:\Users\runneradmin\AppData\Local\Programs\Swift" -ForegroundColor Gray
+          Write-Host "   Swift is installed at: $swiftToolchainRoot" -ForegroundColor Cyan
+          Write-Host "   LOCALAPPDATA: $env:LOCALAPPDATA" -ForegroundColor Gray
+          Write-Host ""
+          Write-Host "   The cache may not save correctly. Swift might be installed elsewhere." -ForegroundColor Yellow
+        } else {
+          Write-Host ""
+          Write-Host "✅ Cache verification complete!" -ForegroundColor Green
+          Write-Host "   The cache action will save: $cachePathToVerify" -ForegroundColor Cyan
+          Write-Host "   This includes the entire Swift toolchain installation." -ForegroundColor Gray
+          Write-Host ""
+          Write-Host "Note: Cache will be automatically saved at the end of the job." -ForegroundColor Gray
         }
     
     - name: Verify Swift installation
