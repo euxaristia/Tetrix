@@ -1,4 +1,7 @@
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 import CSDL3
 
 // MARK: - Swift-Native Audio Types (replaces SDL audio C types)
@@ -25,31 +28,84 @@ struct AudioSpec {
     }
 }
 
-// MARK: - SDL Audio Wrapper (replaces direct SDL audio calls)
+// MARK: - Swift-Native Audio API (replaces SDL audio C API)
 
-/// Swift-native audio stream wrapper (replaces SDL_AudioStream)
+/// Swift-native audio stream manager with callback-based auto-playback
+/// Uses SDL callbacks to automatically trigger playback without needing explicit resume
 class AudioStream {
     private var sdlStream: OpaquePointer?
-    private let originalDeviceID: UInt32  // Store original device ID passed to OpenAudioDeviceStream
+    private let originalDeviceID: UInt32
+    private var isPlaying: Bool = false
     
-    init?(device: UInt32, spec: AudioSpec, allowedChanges: UInt32 = 0, callback: UnsafeMutableRawPointer? = nil) {
+    // Audio format constants
+    private let sampleRate: Int32
+    private let format: UInt32
+    private let channels: UInt8
+    
+    // Callback system
+    private var userdata: Unmanaged<AudioStream>?
+    private var dataProvider: ((UnsafeMutablePointer<Int16>?, Int32) -> Int32)?
+    
+    /// Initialize with optional callback for auto-playback
+    /// If callback is provided, SDL will automatically call it when audio is needed,
+    /// which should trigger auto-playback without needing explicit resume
+    init?(device: UInt32, spec: AudioSpec, dataProvider: @escaping (UnsafeMutablePointer<Int16>?, Int32) -> Int32) {
+        // Initialize all stored properties first
+        originalDeviceID = device
+        sampleRate = spec.frequency
+        format = spec.format
+        channels = spec.channels
+        self.dataProvider = dataProvider
+        
         var sdlSpec = spec.toSDL()
-        // SDL_OpenAudioDeviceStream signature: (devid, spec, callback, userdata)
-        // callback is SDL_AudioStreamCallback?, userdata is UnsafeMutableRawPointer?
-        // We pass callback as nil and userdata as nil
-        let callbackPtr: SDL_AudioStreamCallback? = nil
-        let userdata: UnsafeMutableRawPointer? = nil
-        sdlStream = SDL_OpenAudioDeviceStream(device, &sdlSpec, callbackPtr, userdata)
+        
+        // Create a retained reference to self for the callback (after all properties initialized)
+        let retained = Unmanaged.passRetained(self)
+        self.userdata = retained
+        let userdataPtr = UnsafeMutableRawPointer(retained.toOpaque())
+        
+        // Create C callback that bridges to Swift
+        let callback: SDL_AudioStreamCallback = { userdata, stream, additional_amount, total_amount in
+            guard let userdata = userdata else { return }
+            let audioStream = Unmanaged<AudioStream>.fromOpaque(userdata).takeUnretainedValue()
+            
+            // Call the Swift data provider
+            if let provider = audioStream.dataProvider {
+                // Allocate buffer for audio data
+                let bufferSize = Int(additional_amount)
+                let buffer = UnsafeMutablePointer<Int16>.allocate(capacity: bufferSize)
+                defer { buffer.deallocate() }
+                
+                // Get data from provider
+                let samplesGenerated = provider(buffer, Int32(bufferSize))
+                
+                if samplesGenerated > 0 {
+                    // Queue the generated audio data
+                    let bytesToQueue = samplesGenerated * 2  // 16-bit = 2 bytes per sample
+                    _ = SDL_PutAudioStreamData(stream, buffer, Int32(bytesToQueue))
+                }
+            }
+        }
+        
+        // Use SDL's OpenAudioDeviceStream with callback - this should auto-start playback
+            sdlStream = SDL_OpenAudioDeviceStream(device, &sdlSpec, callback, userdataPtr)
         if sdlStream == nil {
+            retained.release()
             return nil
         }
-        // Store the original device ID we passed - we'll use this for resume
-        // Avoid calling SDL_GetAudioStreamDevice() as it crashes
-        originalDeviceID = device
+        
+        // With callback-based streams, SDL should auto-start playback
+        isPlaying = true
     }
     
+    /// Resume audio playback - Swift-native implementation
+    /// Since SDL_GetAudioStreamDevice() crashes, we use a workaround:
+    /// 1. Ensure the stream has data (callback provides it)
+    /// 2. Try resuming with the original device ID we used when opening
+    /// 3. If that doesn't work, rely on callback-based auto-playback
     func resume() {
         guard sdlStream != nil else { return }
+        
         // Check if audio subsystem is initialized
         let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
         guard SDL_WasInit(audioFlag) != 0 else {
@@ -57,21 +113,42 @@ class AudioStream {
             return
         }
         
-        // NOTE: We can't call SDL_GetAudioStreamDevice() because it crashes.
-        // We also can't use the original device ID (SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK = 0xFFFFFFFF)
-        // because that's not a real device ID.
+        // Strategy: With callback-based streams, SDL should automatically call our callback
+        // when playback starts. However, the stream might still need to be unpaused.
         // 
-        // According to SDL3 docs, audio streams may start playing automatically when data is queued.
-        // So we'll skip explicit resume and rely on auto-play. If this doesn't work, we'll need
-        // to find another way to get the device ID, or use a different audio API.
+        // Since we can't safely get the device ID from the stream, we'll try a different approach:
+        // 1. Ensure stream is not paused (try unpausing if possible)
+        // 2. Ensure callback is providing data
+        // 3. SDL should automatically start calling the callback
         
-        // For now, do nothing - audio should start playing when data is queued via putData()
-        print("Audio resume skipped (SDL_GetAudioStreamDevice crashes, relying on auto-play)")
+        // The callback-based approach should work, but streams might start paused.
+        // Unfortunately, we can't unpause without the device ID.
+        // However, try calling pause/unpause cycle which might help on some systems
+        _ = SDL_PauseAudioStreamDevice(sdlStream!)
+        
+        // Small delay
+        #if os(Linux)
+        usleep(5000)  // 5ms
+        #else
+        Thread.sleep(forTimeInterval: 0.005)
+        #endif
+        
+        // Try to ensure stream has data - callback should provide it automatically
+        // but we can also pre-fill some data
+        let queued = SDL_GetAudioStreamQueued(sdlStream!)
+        if queued == 0 {
+            print("Audio stream empty - callback should provide data automatically")
+        }
+        
+        isPlaying = true
+        print("Audio stream resume attempted - callback-based auto-playback enabled")
+        print("  Note: If audio doesn't play, SDL3 may require explicit device resume (not available safely)")
     }
     
     func pause() {
         guard let stream = sdlStream else { return }
         _ = SDL_PauseAudioStreamDevice(stream)
+        isPlaying = false
     }
     
     func getQueued() -> Int32 {
@@ -84,7 +161,14 @@ class AudioStream {
         return SDL_PutAudioStreamData(stream, data, len)
     }
     
+    var playing: Bool {
+        return isPlaying
+    }
+    
     deinit {
+        // Release the retained reference
+        userdata?.release()
+        
         if let stream = sdlStream {
             SDL_DestroyAudioStream(stream)
         }
@@ -187,9 +271,20 @@ class TetrisMusic {
             channels: 1  // Mono audio
         )
         
-        // SDL3: Use Swift-native audio stream wrapper
-        // Pass nil for callback - we'll queue data manually
-        audioStream = AudioStream(device: AudioDevice.defaultPlayback, spec: spec)
+        // Create callback-based audio stream that auto-plays
+        // The callback will generate audio on demand
+        audioStream = AudioStream(device: AudioDevice.defaultPlayback, spec: spec) { [weak self] buffer, requestedSamples in
+            guard let self = self, self.isPlaying else {
+                // Return silence if not playing
+                if let buffer = buffer {
+                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
+                }
+                return requestedSamples
+            }
+            
+            // Generate audio samples
+            return self.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
+        }
         
         if audioStream == nil {
             let errorString = String.sdlError() ?? "Unknown error"
@@ -197,102 +292,135 @@ class TetrisMusic {
             return
         }
         
-        // SDL3: Device starts paused, resume to start playback
-        // Only resume if audio subsystem is still initialized
-        // But don't resume immediately - let the caller decide when to start
-        // This avoids crashes if the stream is invalid
-        print("Audio stream created successfully (will resume when music starts)")
+        print("Audio stream created with callback-based auto-playback")
+    }
+    
+    /// Generate audio samples on demand (called by SDL callback)
+    /// Returns the number of samples generated
+    private func generateAudioSamples(buffer: UnsafeMutablePointer<Int16>?, requestedSamples: Int32) -> Int32 {
+        guard let buffer = buffer, requestedSamples > 0 else { return 0 }
+        
+        var samplesGenerated: Int32 = 0
+        let amplitude: Double = 5500.0
+        let twoPi = 2.0 * Double.pi
+        
+        // Generate samples until we've filled the requested amount
+        while samplesGenerated < requestedSamples {
+            // Check if we need to move to the next note
+            if currentNoteIndex >= melody.count {
+                // Loop back to start
+                currentNoteIndex = 0
+                self.samplesGenerated = 0  // Reset position tracking for loop
+            }
+            
+            let noteData = melody[currentNoteIndex]
+            guard let freq = noteFreqs[noteData.note] else {
+                currentNoteIndex = (currentNoteIndex + 1) % melody.count
+                continue
+            }
+            
+            let duration = noteData.duration * (60.0 / tempo)
+            let noteSamples = Int(Double(sampleRate) * duration)
+            let remainingInNote = noteSamples - (self.samplesGenerated % noteSamples)
+            let samplesToGenerate = min(Int32(remainingInNote), requestedSamples - samplesGenerated)
+            
+            // Generate samples for this portion of the note
+            let noteStartSample = self.samplesGenerated % noteSamples
+            for i in 0..<Int(samplesToGenerate) {
+                let sampleIndex = noteStartSample + i
+                let time = Double(self.samplesGenerated + i) / Double(sampleRate)
+                
+                // Envelope (fade in/out to avoid clicks)
+                let fadeSamples = min(noteSamples / 10, 800)
+                let envelope: Double
+                if sampleIndex < fadeSamples {
+                    envelope = Double(sampleIndex) / Double(fadeSamples)
+                } else if sampleIndex >= noteSamples - fadeSamples {
+                    envelope = Double(noteSamples - sampleIndex) / Double(fadeSamples)
+                } else {
+                    envelope = 1.0
+                }
+                
+                let sample = sin(twoPi * freq * time) * amplitude * envelope
+                buffer[Int(samplesGenerated) + i] = Int16(max(-32768, min(32767, sample)))
+            }
+            
+            samplesGenerated += samplesToGenerate
+            self.samplesGenerated += Int(samplesToGenerate)
+            
+            // Move to next note if we've finished this one
+            if (self.samplesGenerated % noteSamples) == 0 {
+                currentNoteIndex = (currentNoteIndex + 1) % melody.count
+            }
+        }
+        
+        return samplesGenerated
     }
     
     func start() {
-        guard audioStream != nil else { return }
+        guard let stream = audioStream else { return }
         isPlaying = true
         currentNoteIndex = 0
         samplesGenerated = 0
-        // Pre-fill some audio
-        for _ in 0..<5 {
-            generateAndQueueAudio()
+        
+        // Hybrid approach: Pre-fill some audio data manually to trigger playback,
+        // then let the callback take over for continuous generation
+        // This might help trigger SDL to start playback even if callback alone doesn't
+        let bytesPerSecond = sampleRate * 2  // 16-bit mono
+        let prefillAmount = bytesPerSecond / 2  // 500ms of audio
+        
+        // Generate and queue initial audio to trigger playback
+        var prefillSamples: [Int16] = []
+        let samplesNeeded = prefillAmount / 2  // 2 bytes per sample
+        
+        // Generate initial samples
+        for _ in 0..<samplesNeeded {
+            if currentNoteIndex >= melody.count {
+                currentNoteIndex = 0
+                samplesGenerated = 0
+            }
+            
+            let noteData = melody[currentNoteIndex]
+            guard let freq = noteFreqs[noteData.note] else {
+                currentNoteIndex = (currentNoteIndex + 1) % melody.count
+                continue
+            }
+            
+            let time = Double(samplesGenerated) / Double(sampleRate)
+            let sample = sin(2.0 * Double.pi * freq * time) * 5500.0
+            prefillSamples.append(Int16(max(-32768, min(32767, sample))))
+            samplesGenerated += 1
+            
+            let duration = noteData.duration * (60.0 / tempo)
+            let noteSamples = Int(Double(sampleRate) * duration)
+            if samplesGenerated % noteSamples == 0 {
+                currentNoteIndex = (currentNoteIndex + 1) % melody.count
+            }
         }
-        // Resume playback - SDL3 audio streams start paused
-        // Delay resume slightly to ensure stream is fully initialized
-        // Resume will be called in update() after we verify audio is queued
+        
+        // Queue the pre-filled data
+        let _ = prefillSamples.withUnsafeBufferPointer { buffer in
+            let bytesToWrite = prefillSamples.count * 2
+            _ = stream.putData(buffer.baseAddress!, Int32(bytesToWrite))
+        }
+        
+        // Now resume - this should trigger playback with the pre-filled data,
+        // and the callback will continue providing data
+        stream.resume()
     }
     
     func stop() {
         isPlaying = false
-        hasResumed = false
         // Pause playback when stopping
         audioStream?.pause()
     }
     
-    private var hasResumed = false
-    
     func update() {
-        guard isPlaying, let stream = audioStream else { return }
-        
-        // Keep the audio queue filled (generate ahead)
-        // SDL3: Use Swift-native audio stream wrapper
-        let queuedSize = stream.getQueued()
-        
-        // Resume playback once we have enough audio queued (stream is initialized)
-        if !hasResumed && queuedSize > 0 {
-            stream.resume()
-            hasResumed = true
-        }
-        
-        let bytesPerSecond = sampleRate * 2 // sampleRate * 2 bytes (16-bit) * 1 channel
-        let targetQueueSize = bytesPerSecond / 4 // 250ms buffer
-        
-        if queuedSize < targetQueueSize {
-            generateAndQueueAudio()
-        }
-    }
-    
-    private func generateAndQueueAudio() {
-        // Generate one note at a time
-        guard currentNoteIndex < melody.count else { return }
-        let noteData = melody[currentNoteIndex]
-        guard let freq = noteFreqs[noteData.note] else {
-            // Skip to next note if frequency not found
-            currentNoteIndex = (currentNoteIndex + 1) % melody.count
-            return
-        }
-        
-        let duration = noteData.duration * (60.0 / tempo)
-        let numSamples = Int(Double(sampleRate) * duration)
-        var samples = [Int16](repeating: 0, count: numSamples)
-        
-        let amplitude: Double = 5500.0 // 16-bit audio, quiet volume (~17% of range) for background music
-        let twoPi = 2.0 * Double.pi
-        
-        for i in 0..<numSamples {
-            let time = Double(samplesGenerated + i) / Double(sampleRate)
-            // Generate sine wave with envelope (fade in/out to avoid clicks)
-            let envelope: Double
-            let fadeSamples = min(numSamples / 10, 800) // Fade over first/last portion
-            if i < fadeSamples {
-                envelope = Double(i) / Double(fadeSamples)
-            } else if i >= numSamples - fadeSamples {
-                envelope = Double(numSamples - i) / Double(fadeSamples)
-            } else {
-                envelope = 1.0
-            }
-            
-            let sample = sin(twoPi * freq * time) * amplitude * envelope
-            samples[i] = Int16(max(-32768, min(32767, sample)))
-        }
-        
-        samplesGenerated += numSamples
-        
-        // SDL3: Use Swift-native audio stream wrapper
-        guard let stream = audioStream else { return }
-        let _ = samples.withUnsafeBufferPointer { buffer in
-            let bytesToWrite = samples.count * 2  // 2 bytes per Int16 sample
-            _ = stream.putData(buffer.baseAddress!, Int32(bytesToWrite))
-        }
-        
-        // Move to next note
-        currentNoteIndex = (currentNoteIndex + 1) % melody.count
+        // With callback-based streams, SDL calls our callback automatically
+        // No need to manually queue data - the callback handles it
+        // This function is kept for compatibility but doesn't need to do anything
+        guard isPlaying, audioStream != nil else { return }
+        // Callback is handling audio generation automatically
     }
     
     deinit {

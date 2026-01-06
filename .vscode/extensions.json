@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "sswg.swift-lang"
+    ],
+    "unwantedRecommendations": [
+        // Disable heavy extensions that might cause lag
+    ]
+}

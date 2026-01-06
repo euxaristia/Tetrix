@@ -15,7 +15,9 @@ class SDL3Game {
     #endif
     // Font removed - using Swift-native text renderer
     private let engine: TetrisEngine
+    private var threadSafeState: ThreadSafeGameState?
     private var running = true
+    private let threadPool = ThreadPoolManager.shared
     
     private var gamepad: Gamepad?
     private var usingController = false
@@ -46,6 +48,7 @@ class SDL3Game {
     
     init() {
         engine = TetrisEngine()
+        threadSafeState = ThreadSafeGameState()
         
         // Load settings
         let settings = settingsManager.loadSettings()
@@ -342,15 +345,13 @@ class SDL3Game {
         let targetFPS = 60.0
         let frameTime = 1.0 / targetFPS
         
+        // Simple, fast game loop - direct access, no threading overhead
         while running {
             let now = Date()
             
-            // Process ALL pending events immediately for responsive window controls (especially on Linux)
-            // This ensures the X button hover/click responses are instant
-            // Process events in a tight loop until queue is empty
+            // Process ALL pending events immediately for responsive window controls
             handleEvents()
-            // Process again to catch any events that arrived during first processing
-            handleEvents()
+            handleEvents() // Process twice to catch events that arrived during first pass
             
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat()
@@ -366,10 +367,10 @@ class SDL3Game {
                 SDLCursorHelper.show()
             }
             
-        // Update music (only if enabled)
-        if musicEnabled {
-            music?.update()
-        }
+            // Update music (only if enabled)
+            if musicEnabled {
+                music?.update()
+            }
             
             // Update line clearing animation
             engine.updateLineClearing()
@@ -387,27 +388,16 @@ class SDL3Game {
                 lastFrameTime = now
             } else {
                 // Minimal sleep - just enough to yield CPU, but short enough to keep window responsive
-                // Window events (like X button hover) need to be processed frequently
                 PlatformHelper.sleep(milliseconds: 1)
                 
                 // After sleep, immediately process events again to catch any window events
-                // This prevents the lag when hovering over the X button
                 handleEvents()
             }
         }
     }
     
-    private func getDropInterval() -> TimeInterval {
-        // Speed increases with level
-        let baseInterval: TimeInterval = 1.0
-        let minInterval: TimeInterval = 0.1
-        let levelFactor = Double(min(engine.level, 10))
-        return max(minInterval, baseInterval - (levelFactor * 0.09))
-    }
-    
     private func handleEvents() {
         // Pump events from OS into SDL's queue first - critical for window responsiveness on Linux
-        // This ensures window events (X button hover, clicks) are captured immediately
         #if os(Linux)
         SDLEventHelper.pumpEvents()
         #endif
@@ -462,34 +452,6 @@ class SDL3Game {
                 // Music will resume when user manually unpauses if music is enabled
                 break
             }
-        }
-    }
-    
-    private func detectGamepad() {
-        // If we already have a gamepad, don't detect again (prevents duplicate messages)
-        if gamepad != nil {
-            return
-        }
-        
-        // Find first available gamepad using Swift-native wrapper
-        let gamepadIDs = SDLGamepadHelper.getGamepadJoystickIDs()
-        for id in gamepadIDs {
-            if let newGamepad = Gamepad(id: id) {
-                gamepad = newGamepad
-                if let name = newGamepad.name {
-                    print("Gamepad connected: \(name)")
-                }
-                break
-            }
-        }
-    }
-    
-    private func handleKeyRelease(_ keyCode: KeyCode) {
-        switch keyCode {
-        case .s, .down:
-            downKeyHeld = false
-        default:
-            break
         }
     }
     
@@ -548,45 +510,6 @@ class SDL3Game {
         }
     }
     
-    private func toggleMusic() {
-        musicEnabled.toggle()
-        if musicEnabled {
-            music?.start()
-        } else {
-            music?.stop()
-        }
-        saveSettings()
-    }
-    
-    private func saveSettings() {
-        var settings = GameSettings()
-        settings.highScore = highScore
-        settings.musicEnabled = musicEnabled
-        settings.isFullscreen = isFullscreen
-        settingsManager.saveSettings(settings)
-    }
-    
-    private func toggleFullscreen() {
-        isFullscreen.toggle()
-        #if os(Linux)
-        guard let window = window, let renderer = renderer else { return }
-        // Toggle fullscreen using SDL3
-        _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: isFullscreen)
-        
-        // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
-        // This ensures consistent scaling whether windowed, resized, snapped, or maximized
-        if let sdlRenderer = renderer.sdlHandle {
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
-        }
-        #else
-        guard let window = swiftWindow else { return }
-        // Toggle fullscreen using Swift-native window
-        window.setFullscreen(isFullscreen)
-        // TODO: Implement logical presentation/scaling for Swift-native renderer
-        #endif
-        saveSettings()
-    }
-    
     private func handleGamepadButtonDown(_ button: UInt32) {
         // SDL_GamepadButton enum values in SDL3
         // A=0, B=1, X=2, Y=3, BACK=4, START=6
@@ -628,21 +551,6 @@ class SDL3Game {
             if engine.gameState == .gameOver {
                 engine.reset()
             }
-        default:
-            break
-        }
-    }
-    
-    private func handleGamepadButtonUp(_ button: UInt32) {
-        guard let gamepadButton = GamepadButton(rawValue: UInt8(button)) else { return }
-        
-        switch gamepadButton {
-        case .dpadDown:
-            dPadDownHeld = false
-        case .dpadLeft:
-            dPadLeftHeld = false
-        case .dpadRight:
-            dPadRightHeld = false
         default:
             break
         }
@@ -708,6 +616,148 @@ class SDL3Game {
         }
     }
     
+    private func getDropInterval() -> TimeInterval {
+        // Speed increases with level
+        let baseInterval: TimeInterval = 1.0
+        let minInterval: TimeInterval = 0.1
+        let levelFactor = Double(min(engine.level, 10))
+        return max(minInterval, baseInterval - (levelFactor * 0.09))
+    }
+    
+    // handleEvents() removed - now handled by handleEventsMultithreaded() in input thread
+    
+    private func detectGamepad() {
+        // If we already have a gamepad, don't detect again (prevents duplicate messages)
+        if gamepad != nil {
+            return
+        }
+        
+        // Find first available gamepad using Swift-native wrapper
+        let gamepadIDs = SDLGamepadHelper.getGamepadJoystickIDs()
+        for id in gamepadIDs {
+            if let newGamepad = Gamepad(id: id) {
+                gamepad = newGamepad
+                if let name = newGamepad.name {
+                    print("Gamepad connected: \(name)")
+                }
+                break
+            }
+        }
+    }
+    
+    private func handleKeyRelease(_ keyCode: KeyCode) {
+        switch keyCode {
+        case .s, .down:
+            downKeyHeld = false
+        default:
+            break
+        }
+    }
+    
+    
+    private func toggleMusic() {
+        musicEnabled.toggle()
+        if musicEnabled {
+            music?.start()
+        } else {
+            music?.stop()
+        }
+        saveSettings()
+    }
+    
+    private func saveSettings() {
+        var settings = GameSettings()
+        settings.highScore = highScore
+        settings.musicEnabled = musicEnabled
+        settings.isFullscreen = isFullscreen
+        settingsManager.saveSettings(settings)
+    }
+    
+    private func toggleFullscreen() {
+        isFullscreen.toggle()
+        #if os(Linux)
+        guard let window = window, let renderer = renderer else { return }
+        // Toggle fullscreen using SDL3
+        _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: isFullscreen)
+        
+        // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
+        // This ensures consistent scaling whether windowed, resized, snapped, or maximized
+        if let sdlRenderer = renderer.sdlHandle {
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
+        }
+        #else
+        guard let window = swiftWindow else { return }
+        // Toggle fullscreen using Swift-native window
+        window.setFullscreen(isFullscreen)
+        // TODO: Implement logical presentation/scaling for Swift-native renderer
+        #endif
+        saveSettings()
+    }
+    
+    // Old handleGamepadButtonDown removed - now using handleGamepadButtonDownMultithreaded
+    private func handleGamepadButtonDown_OLD(_ button: UInt32) {
+        // SDL_GamepadButton enum values in SDL3
+        // A=0, B=1, X=2, Y=3, BACK=4, START=6
+        // DPAD_UP=11, DPAD_DOWN=12, DPAD_LEFT=13, DPAD_RIGHT=14
+        switch button {
+        case 11: // SDL_GAMEPAD_BUTTON_DPAD_UP
+            engine.rotate()
+        case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
+            dPadLeftHeld = true
+            dPadLeftRepeatTimer = Date()
+            engine.moveLeft() // Immediate action
+        case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
+            dPadRightHeld = true
+            dPadRightRepeatTimer = Date()
+            engine.moveRight() // Immediate action
+        case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
+            dPadDownHeld = true
+            dPadDownRepeatTimer = Date()
+            let couldMove = engine.moveDown() // Immediate action
+            // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
+            // Keep key held but reset timer so next piece waits a bit before starting to drop
+            if !couldMove {
+                dPadDownRepeatTimer = Date() // Reset repeat timer, but keep key held
+                let dropInterval = getDropInterval()
+                lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+            }
+        case 0: // SDL_GAMEPAD_BUTTON_A (X button on DualSense)
+            engine.rotate()
+        case 6: // SDL_GAMEPAD_BUTTON_START (Options button on DualSense)
+            engine.pause()
+            // Resume music if game was unpaused and music is enabled
+            if engine.gameState == .playing && musicEnabled {
+                music?.start()
+            } else if engine.gameState == .paused {
+                // Pause music when game is paused
+                music?.stop()
+            }
+        case 4: // SDL_GAMEPAD_BUTTON_BACK (Share button on DualSense) - restart on game over
+            if engine.gameState == .gameOver {
+                engine.reset()
+            }
+        default:
+            break
+        }
+    }
+    
+    private func handleGamepadButtonUp(_ button: UInt32) {
+        guard let gamepadButton = GamepadButton(rawValue: UInt8(button)) else { return }
+        
+        switch gamepadButton {
+        case .dpadDown:
+            dPadDownHeld = false
+        case .dpadLeft:
+            dPadLeftHeld = false
+        case .dpadRight:
+            dPadRightHeld = false
+        default:
+            break
+        }
+    }
+    
+    // Old repeat handlers removed - now handled in handleInputRepeats() in input thread
+    
     private func render() {
         guard let renderer = renderer else { return }
         // Clear screen with dark background
@@ -739,14 +789,17 @@ class SDL3Game {
         if let startTime = engine.lineClearStartTime, !linesToClear.isEmpty {
             let elapsed = Date().timeIntervalSince(startTime)
             // Flash phase (0 to lineClearFlashDuration)
-            if elapsed <= engine.lineClearFlashDuration {
-                flashProgress = min(elapsed / engine.lineClearFlashDuration, 1.0)
+            // Use constants from engine for animation timing
+            let flashDuration: TimeInterval = 0.35
+            let fadeDuration: TimeInterval = 0.25
+            if elapsed <= flashDuration {
+                flashProgress = min(elapsed / flashDuration, 1.0)
             } else {
                 flashProgress = 1.0
                 // Fade phase (after flash phase)
-                let fadeStart = engine.lineClearFlashDuration
+                let fadeStart = flashDuration
                 let fadeElapsed = elapsed - fadeStart
-                fadeProgress = min(fadeElapsed / engine.lineClearFadeDuration, 1.0)
+                fadeProgress = min(fadeElapsed / fadeDuration, 1.0)
             }
         }
         

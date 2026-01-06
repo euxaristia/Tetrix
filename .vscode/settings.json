@@ -4,5 +4,70 @@
     "lldb.adapterEnv": {
         "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:/usr/lib:${env:LD_LIBRARY_PATH}"
     },
-    "lldb.launch.expressions": "native"
+    "lldb.launch.expressions": "native",
+    
+    // Performance optimizations for Cursor/VSCode
+    "files.watcherExclude": {
+        "**/.build/**": true,
+        "**/.swiftpm/**": true,
+        "**/node_modules/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/build/**": true
+    },
+    "files.exclude": {
+        "**/.build": true,
+        "**/.swiftpm": true
+    },
+    "search.exclude": {
+        "**/.build": true,
+        "**/.swiftpm": true,
+        "**/node_modules": true,
+        "**/*.dll": true,
+        "**/*.lib": true,
+        "**/*.exp": true,
+        "**/*.def": true
+    },
+    
+    // Swift language server optimizations
+    // Primary: Use toolchain directory (most Swift extensions prefer this)
+    "swift.toolchainPath": "/usr/lib/swift",
+    "swift.swiftPath": "/usr/bin/swift",
+    // sourcekit-lsp settings
+    "swift.sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
+    "sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
+    "sourcekit-lsp.toolchainPath": "/usr/lib/swift",
+    
+    // Editor performance
+    "editor.semanticHighlighting.enabled": true,
+    "editor.inlineSuggest.enabled": true,
+    "editor.quickSuggestions": {
+        "other": true,
+        "comments": false,
+        "strings": false
+    },
+    
+    // Disable unnecessary features that can cause lag
+    "editor.formatOnSave": false,
+    "editor.formatOnType": false,
+    "editor.codeActionsOnSave": {},
+    
+    // File watching optimizations
+    "files.watcherInclude": [
+        "**/*.swift",
+        "**/*.h",
+        "**/*.c",
+        "**/Package.swift"
+    ],
+    
+    // Reduce auto-save frequency
+    "files.autoSave": "off",
+    
+    // Disable Git auto-refresh if not needed
+    "git.autoRefresh": false,
+    "git.enabled": true,
+    
+    // TypeScript/JavaScript (if not using, disable)
+    "typescript.disableAutomaticTypeAcquisition": true,
+    "javascript.disableAutomaticTypeAcquisition": true
 }

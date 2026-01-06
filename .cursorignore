@@ -1,0 +1,30 @@
+# Build artifacts
+.build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+*.exp
+*.def
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# Large binary files
+*.dll
+*.lib
+*.exp
+*.def
+
+# Generated files
+SDL3_exports.txt
+
+# Documentation (not needed for indexing)
+*.md
+docs/
+
+# Scripts (not needed for indexing)
+scripts/
