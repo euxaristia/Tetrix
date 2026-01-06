@@ -108,43 +108,12 @@ class SwiftAudioStream {
             }
         }
         
-        // Try using SDL_PauseAudioStreamDevice to toggle pause state
-        // This takes a stream pointer which might be safer than device ID
-        // If stream is paused, calling pause might toggle it? Actually no, that doesn't work.
-        // 
-        // Alternative: Try to unpause by calling pause twice? No, that's not how it works.
-        //
-        // The real issue: Without resume, device stays paused.
-        // Let's try queuing a LOT of data and see if that triggers auto-playback
-        
-        // Queue even more data to try to trigger playback
-        let extraBufferSize = Int(sampleRate) * 2  // Another 1 second
-        let extraBuffer = UnsafeMutablePointer<Int16>.allocate(capacity: extraBufferSize)
-        defer { extraBuffer.deallocate() }
-        
-        if let provider = dataProvider {
-            let samplesGenerated = provider(extraBuffer, Int32(extraBufferSize))
-            if samplesGenerated > 0 {
-                let bytesToQueue = samplesGenerated * 2
-                _ = SDL_PutAudioStreamData(stream, extraBuffer, Int32(bytesToQueue))
-                print("Queued additional \(bytesToQueue) bytes")
-            }
-        }
-        
-        // Try using SDL_PauseAudioStreamDevice to toggle pause state
-        // If the stream is paused, calling pause might toggle it? Actually no.
-        // But let's try calling it once to see if it helps
-        // Note: This might not work, but it's safer than resume with device ID
-        
-        // Actually, let's try a different approach: queue a LOT of data
-        // and hope SDL auto-starts when the buffer is full enough
-        // Some audio systems auto-start when buffer reaches a threshold
-        
-        print("Attempting to start playback by queuing large buffer...")
-        print("  Note: Without resume, playback may not start")
-        print("  This is a known SDL3 limitation on this system")
-        
-        print("Audio queued - playback should start if device was resumed")
+        // Note: SDL_ResumeAudioStreamDevice may crash on some Windows systems
+        // We'll queue data and rely on the callback to provide audio
+        // Some systems auto-start playback when enough data is queued
+        // If resume is needed, it should be called externally after stream creation
+        print("Audio queued - playback may start automatically when buffer fills")
+        print("  Note: Manual resume may be required on some systems")
         
         // Start a background thread to continuously generate and queue audio
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
