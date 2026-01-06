@@ -576,12 +576,18 @@ jobs:
         $releaseExe = "TetrixWindows.exe"
         Copy-Item $exePath $releaseExe
         
-        # Copy required DLLs if found
+        # Copy required DLLs if found (only Swift runtime DLLs, NOT SDL3.dll - SDL3 is statically linked)
         if ($neededDlls.Count -gt 0) {
           Write-Host "`nCopying required Swift runtime DLLs..." -ForegroundColor Yellow
           foreach ($dll in $neededDlls) {
-            Copy-Item $dll -Destination "." -Force
-            Write-Host "  Copied: $(Split-Path $dll -Leaf)" -ForegroundColor Green
+            # Only copy Swift runtime DLLs, never SDL3.dll (SDL3 is statically linked)
+            $dllName = Split-Path $dll -Leaf
+            if ($dllName -notlike "SDL3*.dll") {
+              Copy-Item $dll -Destination "." -Force
+              Write-Host "  Copied: $dllName" -ForegroundColor Green
+            } else {
+              Write-Host "  Skipping: $dllName (SDL3 is statically linked, DLL not needed)" -ForegroundColor Yellow
+            }
           }
         }
         
@@ -603,7 +609,7 @@ jobs:
         name: tetrix-windows
         path: |
           TetrixWindows.exe
-          *.dll
+          swift*.dll
         retention-days: 1
 
   release:
@@ -651,6 +657,6 @@ jobs:
           artifacts/linux/Tetrix
           artifacts/macos/TetrixDarwin
           artifacts/windows/TetrixWindows.exe
-          artifacts/windows/*.dll
+          artifacts/windows/swift*.dll
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
