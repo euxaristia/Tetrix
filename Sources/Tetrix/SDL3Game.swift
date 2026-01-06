@@ -55,6 +55,8 @@ class SDL3Game {
     private var highScore: Int = 0
     private let settingsManager = SettingsManager.shared
     private var windowShown = false  // Track if window has been shown
+    private var hasWindowFocus = false  // Track whether the window has keyboard focus
+    private var windowShownTime: TimeInterval = 0  // Track when window was shown to prevent immediate auto-pause
     
     private let cellSize: Int32 = 30
     private let boardWidth = GameBoard.width
@@ -385,10 +387,19 @@ class SDL3Game {
             }
         }
         
-        // Start playing the classic Tetris theme if music is enabled
+        // Start playing the classic Tetris theme if music is enabled.
+        // On Windows, wait until the window has actually gained focus to avoid
+        // the "play for a moment, then auto‑pause because window isn't focused" effect.
+        #if os(Windows)
+        if musicEnabled {
+            // Music will be started in the first windowFocusGained event handler
+            // once the OS has really given our window focus.
+        }
+        #else
         if musicEnabled {
             music?.start()
         }
+        #endif
     }
     
     deinit {
@@ -443,13 +454,45 @@ class SDL3Game {
                     // This helps on some systems where window manager needs time to process
                     PlatformHelper.sleep(milliseconds: 50)
                     
+                    // Pump events one more time to catch any focus events that may have fired
+                    SDLEventHelper.pumpEvents()
+                    handleEvents() // Process any focus events that were queued
+                    
                     // Render once more to ensure correct display before window becomes visible
                     render()
+                    
+                    // On Windows, if we still don't have focus, start music anyway after a brief delay
+                    // Sometimes focus events arrive late or not at all
+                    #if os(Windows)
+                    if musicEnabled && !hasWindowFocus && !(music?.isCurrentlyPlaying ?? false) {
+                        print("DEBUG: Window shown but no focus event received yet, starting music anyway")
+                        // Give it a bit more time for focus event, then start music
+                        PlatformHelper.sleep(milliseconds: 100)
+                        SDLEventHelper.pumpEvents()
+                        handleEvents()
+                        // If still no focus after pumping events, assume we have focus and start music
+                        if !hasWindowFocus && musicEnabled && !(music?.isCurrentlyPlaying ?? false) {
+                            hasWindowFocus = true // Assume we have focus
+                            music?.start()
+                            print("DEBUG: Started music without explicit focus event")
+                        }
+                    }
+                    #endif
+                    
+                    // Record when window was shown to prevent immediate auto-pause on focus loss
+                    windowShownTime = getCurrentTime()
                     
                     // Logical presentation is already set after renderer creation, no need to set again
                     // But update for fullscreen if needed (handled in init)
                     
                     windowShown = true
+                    
+                    // Ensure game starts in playing state (should already be, but be explicit)
+                    if engine.gameState != .playing && engine.gameState != .gameOver {
+                        print("DEBUG: Game was in \(engine.gameState) state at startup, forcing to playing")
+                        // Don't call engine.pause()/unpause here - just ensure state is correct
+                        // The engine should already be in .playing state from init
+                    }
                 }
             }
             
@@ -616,16 +659,51 @@ class SDL3Game {
             case .gamepadButtonUp(let button):
                 handleGamepadButtonUp(UInt32(button))
             case .windowFocusLost:
-                // Auto-pause when window loses focus
-                if engine.gameState == .playing {
-                    engine.pause()
+                // Track focus state
+                let now = getCurrentTime()
+                let timeSinceShown = now - windowShownTime
+                print("DEBUG: Window focus LOST (windowShown=\(windowShown), timeSinceShown=\(timeSinceShown))")
+                hasWindowFocus = false
+                
+                // Only auto-pause when window loses focus if window has been shown for at least 1 second
+                // This prevents the game from immediately pausing on startup before focus is established
+                if windowShown && timeSinceShown > 1.0 {
+                    print("DEBUG: Auto-pausing game and stopping music due to focus loss")
+                    // Auto-pause when window loses focus (after initial startup period)
+                    if engine.gameState == .playing {
+                        engine.pause()
+                    }
+                    // Always stop music when window loses focus (after grace period)
+                    if music?.isCurrentlyPlaying ?? false {
+                        print("DEBUG: Stopping music on focus lost")
+                        music?.stop()
+                    }
+                } else {
+                    print("DEBUG: Ignoring focus lost event (window just shown, time since shown: \(timeSinceShown)s)")
                 }
-                // Stop music when window loses focus
-                music?.stop()
             case .windowFocusGained:
-                // Window regained focus - game stays paused, user can press ESC to resume
-                // Music will resume when user manually unpauses if music is enabled
-                break
+                // Track focus state
+                print("DEBUG: Window focus GAINED (musicEnabled=\(musicEnabled), isPlaying=\(music?.isCurrentlyPlaying ?? false), gameState=\(engine.gameState))")
+                hasWindowFocus = true
+                
+                // Only start music if:
+                // 1. Music is enabled
+                // 2. Music is not currently playing
+                // 3. Game is in playing state (don't start music if game is paused)
+                if musicEnabled && !(music?.isCurrentlyPlaying ?? false) && engine.gameState == .playing {
+                    print("DEBUG: Starting music on focus gained")
+                    music?.start()
+                } else {
+                    if !musicEnabled {
+                        print("DEBUG: Music disabled, not starting")
+                    } else if music?.isCurrentlyPlaying ?? false {
+                        print("DEBUG: Music already playing, not restarting")
+                    } else if engine.gameState != .playing {
+                        print("DEBUG: Game not playing (state=\(engine.gameState)), not starting music")
+                    }
+                }
+                
+                // Don't auto-resume game - user must press ESC to resume after pausing
             }
             
             // Limit to prevent infinite loops

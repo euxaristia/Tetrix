@@ -450,32 +450,35 @@ class TetrisMusic {
     }
     
     func start() {
-        // Don't restart if already playing
+        // Don't restart if already playing - this prevents issues when start() is called multiple times
         if isPlaying {
-            print("Music already playing, skipping start")
+            print("Music already playing, skipping start (isPlaying=\(isPlaying))")
             return
         }
         
-        isPlaying = true
+        print("Starting Tetris music...")
+        
+        // Reset state before starting
         currentNoteIndex = 0
         samplesGenerated = 0
-        
-        print("Starting Tetris music...")
         
         #if os(Linux)
         // Use PulseAudio on Linux
         if let pulseStream = pulseAudioStream {
+            // Set isPlaying AFTER successfully starting the stream
             pulseStream.start()
+            isPlaying = true
             print("Music started with PulseAudio - background generation active")
         } else {
             print("Warning: PulseAudio stream not initialized")
+            isPlaying = false
         }
         #elseif os(Windows)
         // Use WASAPI on Windows
-        // Set isPlaying BEFORE starting the stream so the callback generates audio
-        isPlaying = true
         if let wasapi = wasapiStream {
+            // Set isPlaying AFTER starting the stream to ensure it's only true if stream actually started
             wasapi.start()
+            isPlaying = true
             print("Music started with WASAPI - background generation active, isPlaying=\(isPlaying)")
         } else {
             print("Warning: WASAPI stream not initialized")
@@ -485,9 +488,12 @@ class TetrisMusic {
         // Use SDL3 audio on macOS and other platforms
         guard let stream = audioStream else {
             print("Warning: Cannot start music - audio stream not initialized")
+            isPlaying = false
             return
         }
+        // Set isPlaying AFTER successfully starting the stream
         stream.start()
+        isPlaying = true
         print("Music started - background generation active")
         #endif
     }

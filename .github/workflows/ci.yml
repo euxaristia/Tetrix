@@ -142,11 +142,31 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3.1
     
+    - name: Get SDL3 commit hash for cache key
+      shell: pwsh
+      id: sdl3-commit
+      run: |
+        # Get the latest SDL3 commit hash to use as cache key
+        # This ensures we only rebuild SDL3 when SDL3 itself changes
+        $commitHash = (git ls-remote https://github.com/libsdl-org/SDL.git HEAD).Split("`t")[0]
+        Write-Host "SDL3 commit hash: $commitHash"
+        Write-Output "commit=$commitHash" >> $env:GITHUB_OUTPUT
+    
+    - name: Cache SDL3 static library
+      uses: actions/cache@v4
+      id: sdl3-cache
+      with:
+        path: |
+          SDL3.lib
+          ${{ runner.temp }}/sdl3-cache/.cmake-cache
+        key: sdl3-static-windows-${{ steps.sdl3-commit.outputs.commit }}-${{ runner.os }}-vs2022
+    
     - name: Install SDL3 Static Libraries
       shell: pwsh
+      if: steps.sdl3-cache.outputs.cache-hit != 'true'
       run: |
-        # Build SDL3 from source (more reliable than vcpkg)
-        Write-Host "Building SDL3 from source on Windows..."
+        # Build SDL3 from source only if not cached
+        Write-Host "SDL3 library not found in cache, building from source..." -ForegroundColor Yellow
         
         # Install CMake if not available
         if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
@@ -155,19 +175,21 @@ jobs:
           $env:Path = "$env:ProgramFiles\CMake\bin;$env:Path"
         }
         
-        # Clone SDL3 source
+        # Clone SDL3 source with minimal history (single branch, depth 1)
         $sdl3Dir = "$env:TEMP\sdl3-build"
         if (Test-Path $sdl3Dir) {
           Remove-Item $sdl3Dir -Recurse -Force
         }
-        git clone --depth 1 https://github.com/libsdl-org/SDL.git $sdl3Dir
+        Write-Host "Cloning SDL3 repository (this may take a moment)..." -ForegroundColor Cyan
+        git clone --depth 1 --single-branch --branch main https://github.com/libsdl-org/SDL.git $sdl3Dir
         
         # Build SDL3 as static library
         $buildDir = Join-Path $sdl3Dir "build"
         New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
         Push-Location $buildDir
         
-        # Configure CMake for static build
+        Write-Host "Configuring CMake for SDL3 static build..." -ForegroundColor Cyan
+        # Configure CMake for static build (disable unnecessary features to speed up build)
         cmake .. `
           -DCMAKE_BUILD_TYPE=Release `
           -DSDL_SHARED=OFF `
@@ -175,13 +197,16 @@ jobs:
           -DSDL_STATIC_PIC=ON `
           -DSDL_TESTS=OFF `
           -DSDL_EXAMPLES=OFF `
+          -DSDL_INSTALL=OFF `
+          -DSDL_INSTALL_TESTS=OFF `
           -G "Visual Studio 17 2022" `
           -A x64
         
-        # Build SDL3
-        cmake --build . --config Release -j
+        Write-Host "Building SDL3 static library (this may take several minutes)..." -ForegroundColor Cyan
+        # Build SDL3 with parallel compilation (use all available cores)
+        cmake --build . --config Release --parallel
         
-        # Copy library to project root
+        # Find and copy the built library
         $sdl3Lib = Get-ChildItem -Path "$buildDir\Release" -Filter "SDL3-static.lib" -ErrorAction SilentlyContinue
         if (-not $sdl3Lib) {
           # Try alternative names
@@ -196,17 +221,34 @@ jobs:
         
         if ($sdl3Lib) {
           Copy-Item $sdl3Lib.FullName "$env:GITHUB_WORKSPACE\SDL3.lib" -Force
-          Write-Host "Copied $($sdl3Lib.Name) to SDL3.lib"
+          Write-Host "Copied $($sdl3Lib.Name) to SDL3.lib" -ForegroundColor Green
         } else {
-          Write-Host "Error: SDL3 static library not found after build"
+          Write-Host "Error: SDL3 static library not found after build" -ForegroundColor Red
           Write-Host "Contents of $buildDir\Release:"
           Get-ChildItem "$buildDir\Release" | ForEach-Object { Write-Host "  $($_.Name)" }
           exit 1
         }
         
-        # Headers not copied - using only rewritten headers from Sources/CSDL3/include/SDL3/
-        
         Pop-Location
+        
+        # Clean up build directory to save space (we only need the .lib file)
+        if (Test-Path $sdl3Dir) {
+          Remove-Item $sdl3Dir -Recurse -Force
+        }
+    
+    - name: Verify SDL3 library exists
+      shell: pwsh
+      run: |
+        if (${{ steps.sdl3-cache.outputs.cache-hit }} == 'true') {
+          Write-Host "Using cached SDL3 library (cache hit - saved ~5+ minutes!)" -ForegroundColor Green
+        }
+        if (Test-Path "SDL3.lib") {
+          $libInfo = Get-Item "SDL3.lib"
+          Write-Host "SDL3 library found: $($libInfo.Name) ($([math]::Round($libInfo.Length / 1MB, 2)) MB)" -ForegroundColor Green
+        } else {
+          Write-Host "Error: SDL3.lib not found!" -ForegroundColor Red
+          exit 1
+        }
     
     - name: Build Static Release with Tenebris Obfuscation
       shell: pwsh

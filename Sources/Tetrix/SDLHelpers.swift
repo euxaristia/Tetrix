@@ -224,6 +224,14 @@ struct SDLWindowHelper {
         SDL_ShowWindow(window)
         // Raise window to ensure it gets focus and is responsive
         SDL_RaiseWindow(window)
+
+        #if os(Windows)
+        // On Windows explicitly mark window as focusable and grab keyboard input
+        // to encourage the OS to give us focus for a newly shown game window.
+        _ = SDL_SetWindowFocusable(window, true)
+        _ = SDL_SetWindowKeyboardGrab(window, true)
+        #endif
+
         // Pump events multiple times to ensure window manager processes the show/raise
         // This is critical for the window to receive keyboard focus on all platforms
         for _ in 0..<10 {
