@@ -214,6 +214,9 @@ class TetrisMusic {
     ]
     
     private var audioStream: SwiftAudioStream? = nil
+    #if os(Linux)
+    private var pulseAudioStream: PulseAudioStream? = nil
+    #endif
     private var sampleRate: Int = 44100
     private var isPlaying = false
     private var samplesGenerated = 0
@@ -266,12 +269,10 @@ class TetrisMusic {
             return
         }
         
-        // Create Swift-native audio stream that manually generates audio
-        // This avoids the crashing SDL_ResumeAudioStreamDevice function
-        audioStream = SwiftAudioStream(
-            device: SwiftAudioDevice.defaultPlayback,
+        // Use PulseAudio instead of SDL3 audio to avoid resume crashes
+        #if os(Linux)
+        pulseAudioStream = PulseAudioStream(
             sampleRate: Int32(sampleRate),
-            format: SwiftAudioFormat.s16,
             channels: 1
         ) { [weak self] buffer, requestedSamples in
             guard let self = self else {
@@ -294,6 +295,42 @@ class TetrisMusic {
             }
         }
         
+        if pulseAudioStream == nil {
+            print("Warning: Failed to create PulseAudio stream")
+            return
+        }
+        
+        print("PulseAudio stream created successfully")
+        print("  Sample rate: \(sampleRate) Hz")
+        print("  Format: 16-bit signed")
+        print("  Channels: Mono")
+        #else
+        // Use SDL3 audio on other platforms
+        let deviceID = SwiftAudioStream.getPlaybackDevice()
+        
+        audioStream = SwiftAudioStream(
+            device: deviceID,
+            sampleRate: Int32(sampleRate),
+            format: SwiftAudioFormat.s16,
+            channels: 1
+        ) { [weak self] buffer, requestedSamples in
+            guard let self = self else {
+                if let buffer = buffer {
+                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
+                }
+                return requestedSamples
+            }
+            
+            if self.isPlaying {
+                return self.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
+            } else {
+                if let buffer = buffer {
+                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
+                }
+                return requestedSamples
+            }
+        }
+        
         if audioStream == nil {
             let errorString = String.sdlError() ?? "Unknown error"
             print("Warning: Failed to open audio device: \(errorString)")
@@ -304,7 +341,7 @@ class TetrisMusic {
         print("  Sample rate: \(sampleRate) Hz")
         print("  Format: 16-bit signed")
         print("  Channels: Mono")
-        print("  Method: Manual generation (avoids unsafe SDL functions)")
+        #endif
     }
     
     /// Generate audio samples on demand (called by SDL callback)
@@ -370,11 +407,6 @@ class TetrisMusic {
     }
     
     func start() {
-        guard let stream = audioStream else {
-            print("Warning: Cannot start music - audio stream not initialized")
-            return
-        }
-        
         // Don't restart if already playing
         if isPlaying {
             print("Music already playing, skipping start")
@@ -387,11 +419,23 @@ class TetrisMusic {
         
         print("Starting Tetris music...")
         
-        // Start the Swift-native audio stream
-        // This will start a background thread that continuously generates and queues audio
+        #if os(Linux)
+        // Use PulseAudio on Linux
+        if let pulseStream = pulseAudioStream {
+            pulseStream.start()
+            print("Music started with PulseAudio - background generation active")
+        } else {
+            print("Warning: PulseAudio stream not initialized")
+        }
+        #else
+        // Use SDL3 audio on other platforms
+        guard let stream = audioStream else {
+            print("Warning: Cannot start music - audio stream not initialized")
+            return
+        }
         stream.start()
-        
         print("Music started - background generation active")
+        #endif
     }
     
     func stop() {
@@ -401,7 +445,11 @@ class TetrisMusic {
         }
         
         isPlaying = false
+        #if os(Linux)
+        pulseAudioStream?.stop()
+        #else
         audioStream?.stop()
+        #endif
         print("Music stopped")
     }
     

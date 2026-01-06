@@ -17,12 +17,14 @@ let package = Package(
         .target(
             name: "CSDL3",
             path: "Sources/CSDL3",
-            // This is now a C module (via module.modulemap) but with no C source files
-            // All C code has been removed, only headers remain for interop
+            // C module with PulseAudio wrapper for audio
+            sources: ["PulseAudioWrapper.c"],
             cSettings: [
                 .headerSearchPath("include"),
                 // Windows: Add header path for statically built SDL3
-                .headerSearchPath("sdl3-headers", .when(platforms: [.windows]))
+                .headerSearchPath("sdl3-headers", .when(platforms: [.windows])),
+                // Linux: Add PulseAudio compiler flags
+                .unsafeFlags(["-D_REENTRANT"], .when(platforms: [.linux]))
             ],
             linkerSettings: [
                 // Windows: Link against static libraries (built in CI, renamed to standard names)
@@ -32,6 +34,7 @@ let package = Package(
                 .linkedLibrary("SDL3")
                 // Note: SDL3 automatically handles both X11 and Wayland - no need to link X11 directly
                 // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
+                // Note: PulseAudio is linked by the executable target below
             ]
         ),
         .executableTarget(
@@ -57,7 +60,9 @@ let package = Package(
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3")
+                .linkedLibrary("SDL3"),
+                // Linux: Link PulseAudio (needed by CSDL3's PulseAudioWrapper)
+                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux]))
                 // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
             ]
         )

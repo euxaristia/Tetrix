@@ -4,3 +4,9 @@ module CSDL3 {
     link "SDL3"
     export *
 }
+
+module PulseAudioWrapper {
+    header "PulseAudioWrapper.h"
+    link "pulse"
+    export *
+}
