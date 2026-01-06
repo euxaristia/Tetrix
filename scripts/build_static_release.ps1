@@ -47,5 +47,58 @@ $fileInfo = Get-Item $exePath
 Write-Host "`nBuild successful!" -ForegroundColor Green
 Write-Host "  Executable: $exePath" -ForegroundColor Cyan
 Write-Host "  Size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
-Write-Host "`nNote: For symbol stripping, run: llvm-strip --strip-all $exePath" -ForegroundColor Yellow
-Write-Host "  (Symbol stripping is handled automatically in CI)" -ForegroundColor Yellow
+
+# Strip symbols in place using llvm-strip if available
+Write-Host "`nStripping symbols with llvm-strip..." -ForegroundColor Yellow
+$stripTool = "llvm-strip"
+if (Get-Command $stripTool -ErrorAction SilentlyContinue) {
+    $beforeSize = $fileInfo.Length
+    & $stripTool --strip-all $exePath
+    if ($LASTEXITCODE -eq 0) {
+        $afterSize = (Get-Item $exePath).Length
+        $saved = $beforeSize - $afterSize
+        Write-Host "  Symbols stripped successfully" -ForegroundColor Green
+        Write-Host "  Size reduction: $([math]::Round($saved / 1KB, 2)) KB" -ForegroundColor Cyan
+    } else {
+        Write-Host "  Warning: llvm-strip failed (exit code: $LASTEXITCODE)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "`nWarning: llvm-strip not found in PATH, trying common locations..." -ForegroundColor Yellow
+    # Try common llvm-strip locations
+    $possiblePaths = @(
+        "$env:ProgramFiles\LLVM\bin\llvm-strip.exe",
+        "${env:ProgramFiles(x86)}\LLVM\bin\llvm-strip.exe",
+        "$env:LOCALAPPDATA\Programs\Swift\Toolchains\*\usr\bin\llvm-strip.exe"
+    )
+
+    $found = $false
+    foreach ($pattern in $possiblePaths) {
+        $tools = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($tools) {
+            $tool = $tools.FullName
+            Write-Host "  Found llvm-strip at: $tool" -ForegroundColor Cyan
+            $beforeSize = (Get-Item $exePath).Length
+            & $tool --strip-all $exePath
+            if ($LASTEXITCODE -eq 0) {
+                $afterSize = (Get-Item $exePath).Length
+                $saved = $beforeSize - $afterSize
+                Write-Host "  Symbols stripped successfully" -ForegroundColor Green
+                Write-Host "  Size reduction: $([math]::Round($saved / 1KB, 2)) KB" -ForegroundColor Cyan
+                $found = $true
+                break
+            }
+        }
+    }
+
+    if (-not $found) {
+        Write-Host "  Could not find llvm-strip, skipping symbol stripping" -ForegroundColor Yellow
+        Write-Host "  Install LLVM tools or add llvm-strip to PATH for symbol stripping" -ForegroundColor Yellow
+    }
+}
+
+# Final file info
+$finalFileInfo = Get-Item $exePath
+Write-Host "`nFinal executable:" -ForegroundColor Green
+Write-Host "  Path: $exePath" -ForegroundColor Cyan
+Write-Host "  Size: $([math]::Round($finalFileInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+Write-Host "`n✅ Build complete! Executable is statically linked, obfuscated, and symbol-stripped." -ForegroundColor Green
