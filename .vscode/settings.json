@@ -28,15 +28,14 @@
         "**/*.exp": true,
         "**/*.def": true
     },
-    
-    // Swift language server optimizations
-    // Primary: Use toolchain directory (most Swift extensions prefer this)
-    "swift.toolchainPath": "/usr/lib/swift",
     "swift.swiftPath": "/usr/bin/swift",
+    "swift.toolchainPath": "/usr/lib/swift",
     // sourcekit-lsp settings
     "swift.sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
     "sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
     "sourcekit-lsp.toolchainPath": "/usr/lib/swift",
+    // Suppress notifications/warnings (debugging works, so toolchain is fine)
+    "swift.showNotifications": false,
     
     // Editor performance
     "editor.semanticHighlighting.enabled": true,
