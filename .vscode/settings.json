@@ -1,6 +1,8 @@
 {
-    // Platform-specific LLDB library configuration
-    // Linux: Uses system LLDB library (prevents liblldb.so.backup errors)
-    // Windows: Comment out the line below - CodeLLDB uses its bundled LLDB library on Windows
-    "lldb.library": "/usr/lib/liblldb.so"
+    "lldb.executable": "/usr/bin/lldb",
+    "lldb.library": "/usr/lib/liblldb.so",
+    "lldb.adapterEnv": {
+        "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:/usr/lib:${env:LD_LIBRARY_PATH}"
+    },
+    "lldb.launch.expressions": "native"
 }

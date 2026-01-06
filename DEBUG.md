@@ -1,7 +1,7 @@
 # Debugging Tetrix on Linux
 
 ## Known Issue
-CodeLLDB extension in VSCode has compatibility issues with Swift's LLDB on Linux, showing errors about `liblldb.so.backup`.
+CodeLLDB extension in VSCode/Cursor may show warnings about "LLDB failed to provide a library path" for Swift debugging. This is usually harmless and debugging should still work.
 
 ## Solutions
 
@@ -13,8 +13,19 @@ swift run
 ./.build/debug/Tetrix
 ```
 
-### Option 2: Command-Line Debugging
-If you need to debug, use command-line LLDB:
+### Option 2: VSCode/Cursor Debugging with CodeLLDB
+A `.vscode/launch.json` configuration is included with proper Swift runtime library paths:
+1. Press `F5` or go to Run and Debug
+2. Select "Debug Tetrix" configuration
+3. The warning about library paths is usually harmless - debugging should still work
+
+The configuration includes:
+- Proper `LD_LIBRARY_PATH` for Swift runtime libraries (`/usr/lib/swift/lib/swift/linux`)
+- Source mapping for debugging
+- Pre-build task to compile before debugging
+
+### Option 3: Command-Line Debugging
+If you need more control, use command-line LLDB:
 
 1. Build the project:
 ```bash
@@ -35,13 +46,26 @@ lldb ./.build/debug/Tetrix
    - `print <variable>` or `p <variable>` - Print variable
    - `quit` or `q` - Exit
 
-### Option 3: Print Debugging
+### Option 4: Print Debugging
 For simple debugging, use `print()` statements in your Swift code. They work great for terminal applications.
 
-### Option 4: VSCode Launch Configuration (If CodeLLDB Works)
-If CodeLLDB starts working on your system, the existing `.vscode/launch.json` should work. The configuration is already set up correctly.
+## Fixing CodeLLDB Library Path Warning
+If you get the "LLDB failed to provide a library path" error:
+
+1. **Check Swift installation:**
+   ```bash
+   swift --version
+   which swift
+   ```
+
+2. **Verify Swift runtime libraries exist:**
+   ```bash
+   ls -la /usr/lib/swift/lib/swift/linux/
+   ```
+
+3. **The `.vscode/settings.json` file** includes configuration to help CodeLLDB find the libraries. If the warning persists, it's usually safe to ignore - debugging should still function.
 
 ## Notes
-- The CodeLLDB error doesn't affect the game's functionality
-- Swift debugging on Linux is generally better via command-line tools
-- For a terminal game like Tetrix, print statements are often sufficient for debugging
+- The CodeLLDB library path warning doesn't affect the game's functionality
+- Swift debugging on Linux works best with native LLDB (command-line or CodeLLDB with proper configuration)
+- The included `.vscode/launch.json` and `.vscode/settings.json` should resolve most configuration issues

@@ -1,7 +1,4 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
@@ -11,20 +8,40 @@
             "program": "${workspaceFolder:Tetrix}/.build/debug/Tetrix",
             "args": [],
             "cwd": "${workspaceFolder:Tetrix}",
-            "console": "integratedTerminal",
-            "stopOnEntry": false,
-            "sourceLanguages": [
-                "swift",
-                "c",
-                "cpp"
-            ],
-            "linux": {
-                "program": "${workspaceFolder}/.build/debug/Tetrix"
+            "preLaunchTask": "swift: Build Debug Tetrix",
+            "env": {
+                "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:${env:LD_LIBRARY_PATH}"
             },
-            "windows": {
-                "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/debug/Tetrix.exe"
+            "sourceMap": {
+                "/proc/self/cwd": "${workspaceFolder}",
+                "${workspaceFolder}": "${workspaceFolder}"
             },
-            "preLaunchTask": "swift: Build Debug Tetrix"
+            "initCommands": [
+                "settings set target.env-vars LD_LIBRARY_PATH=/usr/lib/swift/lib/swift/linux",
+                "settings set symbols.enable-external-lookup true",
+                "settings set symbols.load-on-demand false"
+            ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Tetrix (Release)",
+            "program": "${workspaceFolder}/.build/release/Tetrix",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "swift-build-release",
+            "env": {
+                "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:${env:LD_LIBRARY_PATH}"
+            },
+            "sourceMap": {
+                "/proc/self/cwd": "${workspaceFolder}",
+                "${workspaceFolder}": "${workspaceFolder}"
+            },
+            "initCommands": [
+                "settings set target.env-vars LD_LIBRARY_PATH=/usr/lib/swift/lib/swift/linux",
+                "settings set symbols.enable-external-lookup true",
+                "settings set symbols.load-on-demand false"
+            ]
         },
         {
             "type": "lldb",
@@ -33,20 +50,19 @@
             "program": "${workspaceFolder:Tetrix}/.build/release/Tetrix",
             "args": [],
             "cwd": "${workspaceFolder:Tetrix}",
-            "console": "integratedTerminal",
-            "stopOnEntry": false,
-            "sourceLanguages": [
-                "swift",
-                "c",
-                "cpp"
-            ],
-            "linux": {
-                "program": "${workspaceFolder}/.build/release/Tetrix"
+            "preLaunchTask": "swift: Build Release Tetrix",
+            "env": {
+                "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:${env:LD_LIBRARY_PATH}"
             },
-            "windows": {
-                "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/release/Tetrix.exe"
+            "sourceMap": {
+                "/proc/self/cwd": "${workspaceFolder}",
+                "${workspaceFolder}": "${workspaceFolder}"
             },
-            "preLaunchTask": "swift: Build Release Tetrix"
+            "initCommands": [
+                "settings set target.env-vars LD_LIBRARY_PATH=/usr/lib/swift/lib/swift/linux",
+                "settings set symbols.enable-external-lookup true",
+                "settings set symbols.load-on-demand false"
+            ]
         }
     ]
 }
