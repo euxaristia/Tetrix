@@ -6,11 +6,13 @@ on:
     paths-ignore:
       - '*.md'
       - 'docs/**'
+      - '*.ps1'
   pull_request:
     branches: [ main, master ]
     paths-ignore:
       - '*.md'
       - 'docs/**'
+      - '*.ps1'
   workflow_dispatch:
     # Allow manual triggering of the workflow
 
