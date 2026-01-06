@@ -101,113 +101,105 @@ jobs:
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
-        # Use existing vcpkg installation (comes with Visual Studio)
-        # Find vcpkg if VCPKG_ROOT is not already set
-        if (-not $env:VCPKG_ROOT) {
-          # Check common vcpkg locations
-          $possiblePaths = @(
-            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg",
-            "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\vcpkg",
-            "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\vcpkg",
-            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg",
-            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\VC\vcpkg",
-            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\vcpkg",
-            "C:\vcpkg",
-            "$env:USERPROFILE\vcpkg"
-          )
-          foreach ($path in $possiblePaths) {
-            if (Test-Path "$path\vcpkg.exe") {
-              $env:VCPKG_ROOT = $path
-              Write-Host "Found vcpkg at $env:VCPKG_ROOT"
-              break
-            }
-          }
-          if (-not $env:VCPKG_ROOT) {
-            Write-Host "Error: vcpkg not found. Please install vcpkg or set VCPKG_ROOT environment variable."
-            exit 1
-          }
-        } else {
-          Write-Host "Using vcpkg at $env:VCPKG_ROOT"
-        }
-        $env:Path = "$env:VCPKG_ROOT;$env:Path"
-        # Note: vcpkg may show warnings about unused CMake variables (e.g., SDL_UNIX_CONSOLE_BUILD)
-        # This is a known issue with vcpkg's SDL3 portfile and can be safely ignored
-        vcpkg install sdl3:x64-windows-static
-        # Copy libraries to project root with standard names
-        $vcpkgLibPath = "$env:VCPKG_ROOT\installed\x64-windows-static\lib"
+        # Build SDL3 from source (more reliable than vcpkg)
+        Write-Host "Building SDL3 from source on Windows..."
         
-        # Debug: List all files in the lib directory
-        Write-Host "Contents of ${vcpkgLibPath}:"
-        if (Test-Path $vcpkgLibPath) {
-          Get-ChildItem "$vcpkgLibPath\*" -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "  $($_.Name)"
-          }
-        } else {
-          Write-Host "  Directory does not exist"
+        # Install CMake if not available
+        if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+          Write-Host "CMake not found in PATH, installing via Chocolatey..."
+          choco install cmake -y
+          $env:Path = "$env:ProgramFiles\CMake\bin;$env:Path"
         }
         
-        # Try different naming patterns for SDL3 static library
-        $possibleLibNames = @(
-          "SDL3-static.lib",
-          "SDL3static.lib",
-          "SDL3.lib",
-          "libSDL3.a",
-          "SDL3d.lib"
-        )
-        
-        $sdl3Lib = $null
-        foreach ($libName in $possibleLibNames) {
-          $libPath = Join-Path $vcpkgLibPath $libName
-          if (Test-Path $libPath) {
-            $sdl3Lib = Get-Item $libPath
-            Write-Host "Found SDL3 library: $($sdl3Lib.FullName)"
-            break
-          }
+        # Clone SDL3 source
+        $sdl3Dir = "$env:TEMP\sdl3-build"
+        if (Test-Path $sdl3Dir) {
+          Remove-Item $sdl3Dir -Recurse -Force
         }
+        git clone --depth 1 https://github.com/libsdl-org/SDL.git $sdl3Dir
         
-        # If still not found, try pattern matching
+        # Build SDL3 as static library
+        $buildDir = Join-Path $sdl3Dir "build"
+        New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+        Push-Location $buildDir
+        
+        # Configure CMake for static build
+        cmake .. `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DSDL_SHARED=OFF `
+          -DSDL_STATIC=ON `
+          -DSDL_STATIC_PIC=ON `
+          -DSDL_TESTS=OFF `
+          -DSDL_EXAMPLES=OFF `
+          -G "Visual Studio 17 2022" `
+          -A x64
+        
+        # Build SDL3
+        cmake --build . --config Release -j
+        
+        # Copy library to project root
+        $sdl3Lib = Get-ChildItem -Path "$buildDir\Release" -Filter "SDL3-static.lib" -ErrorAction SilentlyContinue
         if (-not $sdl3Lib) {
-          $sdl3Lib = Get-ChildItem "$vcpkgLibPath\SDL3*.lib" -ErrorAction SilentlyContinue | Where-Object { 
-            $_.Name -match "^SDL3" -and 
-            $_.Name -notmatch "SDL3_ttf" -and 
-            $_.Name -notmatch "SDL3_test" -and 
-            $_.Name -notmatch "\.dll\.lib$"
-          } | Select-Object -First 1
+          # Try alternative names
+          $sdl3Lib = Get-ChildItem -Path "$buildDir\Release" -Filter "SDL3.lib" -ErrorAction SilentlyContinue
+        }
+        if (-not $sdl3Lib) {
+          # Try pattern matching
+          $sdl3Lib = Get-ChildItem -Path "$buildDir\Release" -Filter "SDL3*.lib" | 
+            Where-Object { $_.Name -match "^SDL3" -and $_.Name -notmatch "\.dll\.lib$" } | 
+            Select-Object -First 1
         }
         
-        # SDL3_ttf removed - using Swift-native text rendering
         if ($sdl3Lib) {
           Copy-Item $sdl3Lib.FullName "$env:GITHUB_WORKSPACE\SDL3.lib" -Force
           Write-Host "Copied $($sdl3Lib.Name) to SDL3.lib"
         } else {
-          Write-Host "Error: SDL3 library not found in vcpkg"
-          Write-Host "Searched in: ${vcpkgLibPath}"
-          Write-Host "Tried patterns: $($possibleLibNames -join ', ')"
+          Write-Host "Error: SDL3 static library not found after build"
+          Write-Host "Contents of $buildDir\Release:"
+          Get-ChildItem "$buildDir\Release" | ForEach-Object { Write-Host "  $($_.Name)" }
           exit 1
         }
+        
         # Copy headers
-        $vcpkgIncludePath = "$env:VCPKG_ROOT\installed\x64-windows-static\include"
+        $sdl3IncludePath = Join-Path $sdl3Dir "include"
         New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\sdl3-headers" | Out-Null
-        if (Test-Path "$vcpkgIncludePath\SDL3") {
-          Copy-Item "$vcpkgIncludePath\SDL3\*" "$env:GITHUB_WORKSPACE\sdl3-headers\" -Recurse -ErrorAction SilentlyContinue
-          Write-Host "Copied SDL3 headers from vcpkg"
+        if (Test-Path "$sdl3IncludePath\SDL3") {
+          Copy-Item "$sdl3IncludePath\SDL3\*" "$env:GITHUB_WORKSPACE\sdl3-headers\" -Recurse -ErrorAction SilentlyContinue
+          Write-Host "Copied SDL3 headers to sdl3-headers/"
         } else {
-          Write-Host "Warning: SDL3 headers not found in vcpkg"
+          Write-Host "Warning: SDL3 headers not found at $sdl3IncludePath\SDL3"
         }
+        
+        Pop-Location
     
     
     - name: Build Release (Windows)
       if: matrix.os == 'windows-latest'
-      shell: cmd
+      shell: pwsh
       run: |
         swift build -c release
+        # Verify the executable was built
+        $exePath = ".build\x86_64-unknown-windows-msvc\release\Tetrix.exe"
+        if (-not (Test-Path $exePath)) {
+          Write-Host "Error: Executable not found at $exePath"
+          Write-Host "Build directory contents:"
+          Get-ChildItem -Recurse .build | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          exit 1
+        }
+        Write-Host "Build successful: $exePath"
     
     - name: Bundle Windows Release (Windows)
       if: matrix.os == 'windows-latest' && github.event_name == 'push'
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path release-bundle | Out-Null
-        Copy-Item .build\release\Tetrix.exe release-bundle\
+        # Use architecture-specific path for Windows
+        $exePath = ".build\x86_64-unknown-windows-msvc\release\Tetrix.exe"
+        if (-not (Test-Path $exePath)) {
+          Write-Host "Error: Executable not found at $exePath"
+          exit 1
+        }
+        Copy-Item $exePath release-bundle\Tetrix.exe
         # SDL3 is now statically linked (SDL3_ttf removed, using Swift-native text rendering), so no DLLs needed
         # Only copy Swift runtime DLLs (these cannot be statically linked)
         $swiftDlls = @("swiftCore.dll", "swiftWinSDK.dll", "FoundationEssentials.dll", "swiftCRT.dll")

@@ -84,6 +84,9 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "/OPT:ICF"], .when(platforms: [.windows], configuration: .release)),
                 // Strip unnecessary symbols
                 .unsafeFlags(["-Xlinker", "/INCREMENTAL:NO"], .when(platforms: [.windows], configuration: .release)),
+                // Build as Windows GUI application (no console window) but keep main() entry point
+                .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS"], .when(platforms: [.windows])),
+                .unsafeFlags(["-Xlinker", "/ENTRY:mainCRTStartup"], .when(platforms: [.windows])),
                 // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
                 // Note: PulseAudio is linked by CPulseAudio target
                 // Note: Swift runtime will still be dynamically linked (standard for Swift on Windows)

@@ -10,8 +10,10 @@
             "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/debug/Tetrix.exe",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
             "stopOnEntry": false,
+            "showDisplayString": false,
+            "initCommands": ["settings set target.process.stop-on-sharedlibrary-events false"],
+            "terminal": null,
             "sourceLanguages": [
                 "swift",
                 "c",
@@ -27,8 +29,10 @@
             "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/release/Tetrix.exe",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
             "stopOnEntry": false,
+            "showDisplayString": false,
+            "initCommands": ["settings set target.process.stop-on-sharedlibrary-events false"],
+            "terminal": null,
             "sourceLanguages": [
                 "swift",
                 "c",
