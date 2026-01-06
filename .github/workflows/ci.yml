@@ -210,10 +210,28 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Cache Swift toolchain
+      uses: actions/cache@v4
+      id: swift-cache
+      with:
+        path: |
+          ${{ runner.temp }}/swift
+          ${{ runner.temp }}/swift-*
+        key: swift-toolchain-windows-6.2.1-${{ runner.os }}
+        restore-keys: |
+          swift-toolchain-windows-6.2.1-
+    
     - name: Setup Swift
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
+    
+    - name: Verify Swift after cache restore
+      if: steps.swift-cache.outputs.cache-hit == 'true'
+      shell: pwsh
+      run: |
+        Write-Host "✅ Swift toolchain cache hit - saved ~2.5 minutes!" -ForegroundColor Green
+        swift --version
     
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3.1
