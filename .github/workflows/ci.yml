@@ -29,6 +29,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write  # Needed to cancel workflow runs
 
 jobs:
   build-linux:
@@ -49,10 +50,10 @@ jobs:
           /opt/swift
           ~/.swift
           ~/.swiftpm
-        key: swift-toolchain-linux-6.2.1-${{ runner.os }}
+        key: swift-toolchain-linux-6.2.1
         restore-keys: |
-          swift-toolchain-linux-6.2.1-${{ runner.os }}-
-          swift-toolchain-linux-6.2.1-
+          swift-toolchain-linux-6.2.1
+          swift-toolchain-linux-
     
     - name: Setup Swift
       if: steps.swift-cache.outputs.cache-hit != 'true'
@@ -215,6 +216,23 @@ jobs:
         name: tetrix-linux
         path: .build/release/Tetrix
         retention-days: 1
+    
+    - name: Cancel workflow if this job failed
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.warning('Build job failed. Cancelling workflow run to save runner minutes...');
+          try {
+            await github.rest.actions.cancelWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            core.info('Workflow run cancelled successfully');
+          } catch (error) {
+            core.warning(`Failed to cancel workflow: ${error.message}`);
+          }
 
   build-macos:
     runs-on: macos-latest
@@ -267,6 +285,23 @@ jobs:
         name: tetrix-macos
         path: .build/release/TetrixDarwin
         retention-days: 1
+    
+    - name: Cancel workflow if this job failed
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.warning('Build job failed. Cancelling workflow run to save runner minutes...');
+          try {
+            await github.rest.actions.cancelWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            core.info('Workflow run cancelled successfully');
+          } catch (error) {
+            core.warning(`Failed to cancel workflow: ${error.message}`);
+          }
 
   build-windows:
     runs-on: windows-latest
@@ -299,35 +334,99 @@ jobs:
         Write-Host "✅ Swift toolchain cache hit - configuring PATH..." -ForegroundColor Green
         Write-Host "RUNNER_TEMP: $env:RUNNER_TEMP" -ForegroundColor Cyan
         
-        # Debug: List all directories in RUNNER_TEMP
-        Write-Host "`nChecking RUNNER_TEMP contents:" -ForegroundColor Yellow
+        # Debug: List ALL directories and files in RUNNER_TEMP (not just swift*)
+        Write-Host "`n🔍 Checking RUNNER_TEMP contents:" -ForegroundColor Yellow
         if (Test-Path $env:RUNNER_TEMP) {
-          Get-ChildItem -Path $env:RUNNER_TEMP -Directory | Where-Object { $_.Name -like "swift*" } | ForEach-Object {
-            Write-Host "  Found: $($_.FullName)" -ForegroundColor Gray
+          Write-Host "All directories in RUNNER_TEMP:" -ForegroundColor Cyan
+          Get-ChildItem -Path $env:RUNNER_TEMP -Directory | ForEach-Object {
+            Write-Host "  📁 $($_.Name) - FullPath: $($_.FullName)" -ForegroundColor Gray
+          }
+          Write-Host "`nSwift-related directories:" -ForegroundColor Cyan
+          $swiftDirs = Get-ChildItem -Path $env:RUNNER_TEMP -Directory | Where-Object { $_.Name -like "*swift*" }
+          if ($swiftDirs) {
+            foreach ($dir in $swiftDirs) {
+              Write-Host "  ✅ Found: $($dir.Name)" -ForegroundColor Green
+              Write-Host "    Path: $($dir.FullName)" -ForegroundColor Gray
+              # List contents of this directory
+              $contents = Get-ChildItem -Path $dir.FullName -Directory -ErrorAction SilentlyContinue | Select-Object -First 10
+              if ($contents) {
+                Write-Host "    Contents:" -ForegroundColor Gray
+                foreach ($item in $contents) {
+                  Write-Host "      - $($item.Name)" -ForegroundColor DarkGray
+                }
+              }
+            }
+          } else {
+            Write-Host "  ❌ No directories matching '*swift*' found" -ForegroundColor Red
           }
         } else {
-          Write-Host "  RUNNER_TEMP does not exist!" -ForegroundColor Red
+          Write-Host "  ❌ RUNNER_TEMP does not exist!" -ForegroundColor Red
         }
         
         # Find Swift in the cached location and add to PATH
         $swiftFound = $false
         $swiftBin = $null
         
-        # Try different possible locations
-        $searchPaths = @(
-          "$env:RUNNER_TEMP\swift\usr\bin\swift.exe",
-          "$env:RUNNER_TEMP\swift*\usr\bin\swift.exe"
-        )
+        # Search more thoroughly - check all possible locations
+        Write-Host "`n🔍 Searching for swift.exe..." -ForegroundColor Yellow
         
-        # Also search for any swift.exe in RUNNER_TEMP
+        # Method 1: Search for any swift.exe recursively in RUNNER_TEMP
         if (Test-Path $env:RUNNER_TEMP) {
-          $allSwiftDirs = Get-ChildItem -Path $env:RUNNER_TEMP -Directory -Filter "swift*" -ErrorAction SilentlyContinue
+          $swiftExeFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Filter "swift.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5
+          if ($swiftExeFiles) {
+            Write-Host "Found swift.exe files:" -ForegroundColor Green
+            foreach ($exe in $swiftExeFiles) {
+              Write-Host "  ✅ $($exe.FullName)" -ForegroundColor Green
+              $swiftBin = $exe.DirectoryName
+              $swiftFound = $true
+              break
+            }
+          }
+        }
+        
+        # Method 2: Check standard SwiftyLab locations
+        if (-not $swiftFound) {
+          $standardPaths = @(
+            "$env:RUNNER_TEMP\swift\usr\bin",
+            "$env:RUNNER_TEMP\swift-*\usr\bin",
+            "$env:RUNNER_TEMP\swift-toolchain\usr\bin"
+          )
+          
+          foreach ($pathPattern in $standardPaths) {
+            $resolved = Resolve-Path $pathPattern -ErrorAction SilentlyContinue
+            if ($resolved) {
+              foreach ($path in $resolved) {
+                $swiftExe = Join-Path $path "swift.exe"
+                Write-Host "Checking: $swiftExe" -ForegroundColor Gray
+                if (Test-Path $swiftExe) {
+                  $swiftBin = $path
+                  Write-Host "✅ Found Swift at: $swiftExe" -ForegroundColor Green
+                  $swiftFound = $true
+                  break
+                }
+              }
+              if ($swiftFound) { break }
+            }
+          }
+        }
+        
+        # Method 3: Check any swift* directories for usr\bin\swift.exe
+        if (-not $swiftFound -and (Test-Path $env:RUNNER_TEMP)) {
+          $allSwiftDirs = Get-ChildItem -Path $env:RUNNER_TEMP -Directory | Where-Object { $_.Name -like "*swift*" }
           foreach ($dir in $allSwiftDirs) {
             $swiftExe = Join-Path $dir.FullName "usr\bin\swift.exe"
             Write-Host "Checking: $swiftExe" -ForegroundColor Gray
             if (Test-Path $swiftExe) {
               $swiftBin = Join-Path $dir.FullName "usr\bin"
               Write-Host "✅ Found Swift at: $swiftExe" -ForegroundColor Green
+              $swiftFound = $true
+              break
+            }
+            # Also check if swift.exe is directly in the directory
+            $swiftExeDirect = Join-Path $dir.FullName "swift.exe"
+            if (Test-Path $swiftExeDirect) {
+              $swiftBin = $dir.FullName
+              Write-Host "✅ Found Swift at: $swiftExeDirect" -ForegroundColor Green
               $swiftFound = $true
               break
             }
@@ -340,22 +439,24 @@ jobs:
           # Persist PATH for subsequent steps using GITHUB_ENV
           $currentPath = $env:Path
           Write-Output "PATH=$swiftBin;$currentPath" >> $env:GITHUB_ENV
-          Write-Host "Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
+          Write-Host "`n✅ Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
           
           # Verify Swift works
+          Write-Host "Verifying Swift installation..." -ForegroundColor Yellow
           $swiftVersion = & "$swiftBin\swift.exe" --version 2>&1
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
+            Write-Host "✅ Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
             Write-Host "Swift version: $($swiftVersion[0])" -ForegroundColor Gray
           } else {
-            Write-Host "Warning: Swift found but version check failed" -ForegroundColor Yellow
+            Write-Host "❌ Warning: Swift found but version check failed" -ForegroundColor Yellow
+            Write-Host "Error output: $swiftVersion" -ForegroundColor Red
             $swiftFound = $false
           }
         }
         
         if (-not $swiftFound) {
-          Write-Host "❌ Error: Swift not found in cached paths!" -ForegroundColor Red
-          Write-Host "Cache was hit, but Swift executable not found." -ForegroundColor Yellow
+          Write-Host "`n❌ Error: Swift not found in cached paths!" -ForegroundColor Red
+          Write-Host "Cache was hit, but Swift executable not found in any expected location." -ForegroundColor Yellow
           Write-Host "This may indicate the cache structure changed. Will run setup-swift..." -ForegroundColor Yellow
           # Set an output to indicate we need to run setup-swift (don't exit - let fallback run)
           Write-Output "swift_not_found=true" >> $env:GITHUB_OUTPUT
@@ -786,6 +887,23 @@ jobs:
           TetrixWindows.exe
           swift*.dll
         retention-days: 1
+    
+    - name: Cancel workflow if this job failed
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.warning('Build job failed. Cancelling workflow run to save runner minutes...');
+          try {
+            await github.rest.actions.cancelWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            core.info('Workflow run cancelled successfully');
+          } catch (error) {
+            core.warning(`Failed to cancel workflow: ${error.message}`);
+          }
 
   release:
     needs: [build-linux, build-macos, build-windows]
