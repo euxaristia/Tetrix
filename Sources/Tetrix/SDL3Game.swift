@@ -64,6 +64,8 @@ class SDL3Game {
     private let boardHeight = GameBoard.height
     private let windowWidth: Int32
     private let windowHeight: Int32
+    private let logicalWidth: Int32  // Logical presentation width (for rendering coordinates)
+    private let logicalHeight: Int32  // Logical presentation height (for rendering coordinates)
     
     init() {
         engine = TetrisEngine()
@@ -78,11 +80,21 @@ class SDL3Game {
         // No need to set video driver - SDL3 will auto-detect on Windows
         
         // Calculate window size: board + side panel for next piece and score
+        // Resolution scale factor (2x = double resolution, items stay same size)
+        let resolutionScale: Int32 = 2
+        
+        // Base size calculation
         let boardPixelWidth = Int32(boardWidth) * cellSize
         let boardPixelHeight = Int32(boardHeight) * cellSize
         let sidePanelWidth: Int32 = 200
-        windowWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding (20 on each side)
-        windowHeight = boardPixelHeight + 40 // 40 for padding (20 on top and bottom)
+        
+        // Logical size (for rendering coordinates - keeps items same visual size)
+        logicalWidth = boardPixelWidth + sidePanelWidth + 40 // 40 for padding (20 on each side)
+        logicalHeight = boardPixelHeight + 40 // 40 for padding (20 on top and bottom)
+        
+        // Physical window size (higher resolution - maintains same aspect ratio)
+        windowWidth = logicalWidth * resolutionScale
+        windowHeight = logicalHeight * resolutionScale
         
         // Initialize platform-specific subsystems
         #if os(Linux)
@@ -306,11 +318,7 @@ class SDL3Game {
         // Linux: Defer window showing to first frame of run loop
         // This ensures SDL event system is fully initialized before Wayland operations
         // Window will be shown in run() method after first event pump
-        
-        // Use SDL3 logical presentation for sharp scaling (can be done before showing)
-        if let sdlRenderer = renderer?.sdlHandle {
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
-        }
+        // Logical presentation will be set after window is shown to ensure correct aspect ratio
         #else
         // Windows/macOS: Use Swift-native window operations
         // Apply fullscreen state if it was saved
@@ -374,6 +382,13 @@ class SDL3Game {
                     }
                     // Pump events again to let Wayland/X11 process the show
                     SDLEventHelper.pumpEvents()
+                    
+                    // Set logical presentation after window is shown to ensure correct aspect ratio
+                    // Use integer scale mode to maintain aspect ratio perfectly (2x scale, no letterbox bars)
+                    if let sdlRenderer = renderer?.sdlHandle {
+                        _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+                    }
+                    
                     windowShown = true
                 }
             }
@@ -723,10 +738,10 @@ class SDL3Game {
         // Toggle fullscreen using SDL3
         _ = SDLWindowHelper.setFullscreen(window: window, fullscreen: isFullscreen)
         
-        // Always use letterbox mode for sharp scaling in both windowed and fullscreen modes
-        // This ensures consistent scaling whether windowed, resized, snapped, or maximized
+        // Always use integer scale mode for sharp scaling in both windowed and fullscreen modes
+        // This ensures consistent scaling and maintains aspect ratio perfectly
         if let sdlRenderer = renderer.sdlHandle {
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: windowWidth, height: windowHeight, mode: .letterbox)
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
         }
         #else
         guard let window = swiftWindow else { return }
