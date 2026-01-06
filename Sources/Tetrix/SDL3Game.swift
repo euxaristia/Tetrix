@@ -37,7 +37,8 @@ class SDL3Game {
     private var textRenderer: SwiftTextRenderer?  // Swift-native text renderer (replaces TTF)
     private var dPadDownHeld = false
     private var dPadDownRepeatTimer: TimeInterval = 0
-    private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
+    private let dPadDownRepeatInterval: TimeInterval = 0.025 // Repeat interval for soft drop (40 moves/sec for smoother movement)
+    private let dPadDownInitialDelay: TimeInterval = 0.12 // Initial delay before first repeat (prevents momentum carryover to next piece)
     private var dPadLeftHeld = false
     private var dPadLeftRepeatTimer: TimeInterval = 0
     private var dPadRightHeld = false
@@ -46,7 +47,8 @@ class SDL3Game {
     private let dPadHorizontalInitialDelay: TimeInterval = 0.15 // Initial delay before first repeat (prevents double-input)
     private var downKeyHeld = false
     private var downKeyRepeatTimer: TimeInterval = 0
-    private let downKeyRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for keyboard soft drop
+    private let downKeyRepeatInterval: TimeInterval = 0.02 // Faster repeat interval for keyboard soft drop (50 moves/sec for smoother movement)
+    private let downKeyInitialDelay: TimeInterval = 0.12 // Initial delay before first repeat (prevents momentum carryover to next piece)
     private var lastDropTime: TimeInterval = 0 // Track automatic drop timing, reset when piece locks
     private var music: TetrisMusic?
     private var musicEnabled = true
@@ -407,7 +409,7 @@ class SDL3Game {
         // This ensures maximum responsiveness even when debugger is attached
         let targetFPS = 1000.0  // Effectively unlimited
         #else
-        let targetFPS = 60.0
+        let targetFPS = 180.0 // Higher framerate for smoother gameplay and input response
         #endif
         let frameTime = 1.0 / targetFPS
         
@@ -646,14 +648,16 @@ class SDL3Game {
             // Start holding down key for continuous movement
             if !downKeyHeld {
                 downKeyHeld = true
-                downKeyRepeatTimer = getCurrentTime()
+                let now = getCurrentTime()
+                // Set timer with initial delay to prevent immediate repeat and momentum carryover
+                downKeyRepeatTimer = now + downKeyInitialDelay
                 // Immediate movement on first press
                 let couldMove = engine.moveDown()
                 if !couldMove {
-                    // Reset repeat timer but keep key held so it continues working for next piece
-                    downKeyRepeatTimer = getCurrentTime()
+                    // Add extra delay when piece locks - gives next piece time to spawn and settle
+                    downKeyRepeatTimer = now + downKeyInitialDelay + 0.08 // Extra 80ms delay on lock
                     let dropInterval = getDropInterval()
-                    lastDropTime = getCurrentTime() - dropInterval * 0.5 // Wait 50% of normal interval
+                    lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
                 }
             }
         case .w, .up:
@@ -711,12 +715,14 @@ class SDL3Game {
             engine.moveRight() // Immediate action
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = true
-            dPadDownRepeatTimer = now
+            // Set timer with initial delay to prevent immediate repeat and momentum carryover
+            dPadDownRepeatTimer = now + dPadDownInitialDelay
             let couldMove = engine.moveDown() // Immediate action
-            // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
-            // Keep key held but reset timer so next piece waits a bit before starting to drop
+            // If piece locked (couldn't move), add longer delay to prevent momentum carryover
+            // Keep key held but add significant delay so next piece waits before starting to drop fast
             if !couldMove {
-                dPadDownRepeatTimer = now // Reset repeat timer, but keep key held
+                // Add extra delay when piece locks - gives next piece time to spawn and settle
+                dPadDownRepeatTimer = now + dPadDownInitialDelay + 0.08 // Extra 80ms delay on lock
                 let dropInterval = getDropInterval()
                 lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
             }
@@ -745,15 +751,19 @@ class SDL3Game {
         
         let timeSinceLastAction = now - dPadDownRepeatTimer
         
-        if timeSinceLastAction >= dPadDownRepeatInterval {
-            let couldMove = engine.moveDown()
-            dPadDownRepeatTimer = now
-            // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
-            // Keep key held but reset timer so next piece waits a bit before starting to drop
-            if !couldMove {
-                dPadDownRepeatTimer = now // Reset repeat timer, but keep key held
-                let dropInterval = getDropInterval()
-                lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
+        // Only trigger if initial delay has passed and repeat interval has elapsed
+        if timeSinceLastAction >= 0 {
+            if timeSinceLastAction >= dPadDownRepeatInterval {
+                let couldMove = engine.moveDown()
+                dPadDownRepeatTimer = now
+                // If piece locked (couldn't move), add longer delay to prevent momentum carryover
+                // Keep key held but add significant delay so next piece waits before starting to drop fast
+                if !couldMove {
+                    // Add extra delay when piece locks - gives next piece time to spawn and settle
+                    dPadDownRepeatTimer = now + dPadDownInitialDelay + 0.08 // Extra 80ms delay on lock
+                    let dropInterval = getDropInterval()
+                    lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
+                }
             }
         }
     }
@@ -783,15 +793,19 @@ class SDL3Game {
         
         let timeSinceLastAction = now - downKeyRepeatTimer
         
-        if timeSinceLastAction >= downKeyRepeatInterval {
-            let couldMove = engine.moveDown()
-            downKeyRepeatTimer = now
-            // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
-            // Keep key held but reset timer so next piece waits a bit before starting to drop
-            if !couldMove {
-                downKeyRepeatTimer = now // Reset repeat timer, but keep key held
-                let dropInterval = getDropInterval()
-                lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
+        // Only trigger if initial delay has passed and repeat interval has elapsed
+        if timeSinceLastAction >= 0 {
+            if timeSinceLastAction >= downKeyRepeatInterval {
+                let couldMove = engine.moveDown()
+                downKeyRepeatTimer = now
+                // If piece locked (couldn't move), add longer delay to prevent momentum carryover
+                // Keep key held but add significant delay so next piece waits before starting to drop fast
+                if !couldMove {
+                    // Add extra delay when piece locks - gives next piece time to spawn and settle
+                    downKeyRepeatTimer = now + downKeyInitialDelay + 0.08 // Extra 80ms delay on lock
+                    let dropInterval = getDropInterval()
+                    lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
+                }
             }
         }
     }
