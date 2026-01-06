@@ -43,6 +43,7 @@ jobs:
       id: swift-cache
       with:
         path: |
+          /opt/hostedtoolcache/swift-*
           ${{ runner.temp }}/swift
           ${{ runner.temp }}/swift-*
           ${{ runner.temp }}/swiftpm
@@ -141,6 +142,7 @@ jobs:
         echo ""
         echo "Checking cache paths to see which exist:"
         CACHE_PATHS=(
+          "/opt/hostedtoolcache/swift-*"
           "${{ runner.temp }}/swift"
           "${{ runner.temp }}/swift-*"
           "${{ runner.temp }}/swiftpm"
@@ -402,25 +404,43 @@ jobs:
         swift-version: "6.2.1"
     
     - name: Debug Swift installation location (after setup)
-      if: steps.swift-cache.outputs.cache-hit != 'true'
+      if: steps.swift-cache.outputs.cache-hit != 'true' || (steps.configure-swift-path.outputs.swift_not_found == 'true')
       shell: pwsh
       run: |
         Write-Host "🔍 Debugging where SwiftyLab installed Swift..." -ForegroundColor Yellow
         Write-Host "RUNNER_TEMP: $env:RUNNER_TEMP" -ForegroundColor Cyan
         Write-Host "`nChecking RUNNER_TEMP for Swift:" -ForegroundColor Yellow
         if (Test-Path $env:RUNNER_TEMP) {
+          Write-Host "All directories in RUNNER_TEMP:" -ForegroundColor Cyan
           Get-ChildItem -Path $env:RUNNER_TEMP -Directory | ForEach-Object {
             Write-Host "  📁 $($_.Name)" -ForegroundColor Gray
           }
         }
-        Write-Host "`nSearching for swift.exe recursively:" -ForegroundColor Yellow
+        Write-Host "`nSearching for swift.exe recursively in entire system:" -ForegroundColor Yellow
+        # Search in RUNNER_TEMP
         if (Test-Path $env:RUNNER_TEMP) {
           $swiftExe = Get-ChildItem -Path $env:RUNNER_TEMP -Filter "swift.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($swiftExe) {
             Write-Host "  ✅ Found swift.exe at: $($swiftExe.FullName)" -ForegroundColor Green
             Write-Host "  Directory: $($swiftExe.DirectoryName)" -ForegroundColor Cyan
-          } else {
-            Write-Host "  ❌ swift.exe not found in RUNNER_TEMP" -ForegroundColor Red
+          }
+        }
+        # Search in common Windows locations
+        $searchPaths = @(
+          "$env:LOCALAPPDATA",
+          "$env:ProgramFiles",
+          "C:\Program Files (x86)",
+          "$env:USERPROFILE",
+          "C:\ProgramData"
+        )
+        foreach ($searchPath in $searchPaths) {
+          if (Test-Path $searchPath) {
+            $swiftExe = Get-ChildItem -Path $searchPath -Filter "swift.exe" -Recurse -ErrorAction SilentlyContinue -Depth 5 | Select-Object -First 1
+            if ($swiftExe) {
+              Write-Host "  ✅ Found swift.exe at: $($swiftExe.FullName)" -ForegroundColor Green
+              Write-Host "  Directory: $($swiftExe.DirectoryName)" -ForegroundColor Cyan
+              break
+            }
           }
         }
         Write-Host "`nChecking common locations:" -ForegroundColor Yellow
@@ -429,7 +449,8 @@ jobs:
           "$env:RUNNER_TEMP\swift-*",
           "$env:LOCALAPPDATA\Programs\swift",
           "C:\Program Files\swift",
-          "$env:USERPROFILE\.swift"
+          "$env:USERPROFILE\.swift",
+          "$env:ProgramFiles\swift"
         )
         foreach ($path in $commonPaths) {
           $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
@@ -441,6 +462,10 @@ jobs:
         $swiftPath = Get-Command swift -ErrorAction SilentlyContinue
         if ($swiftPath) {
           Write-Host "  ✅ Swift found at: $($swiftPath.Source)" -ForegroundColor Green
+          $swiftDir = Split-Path $swiftPath.Source -Parent
+          $toolchainRoot = Split-Path $swiftDir -Parent | Split-Path -Parent
+          Write-Host "  Swift directory: $swiftDir" -ForegroundColor Cyan
+          Write-Host "  Toolchain root (likely): $toolchainRoot" -ForegroundColor Cyan
         } else {
           Write-Host "  ❌ Swift not in PATH" -ForegroundColor Red
         }
@@ -589,6 +614,24 @@ jobs:
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
+    
+    - name: Debug Swift installation location (after fallback setup)
+      if: steps.swift-fallback.conclusion == 'success'
+      shell: pwsh
+      run: |
+        Write-Host "🔍 Checking where Swift was installed after fallback setup..." -ForegroundColor Yellow
+        $swiftPath = Get-Command swift -ErrorAction SilentlyContinue
+        if ($swiftPath) {
+          Write-Host "  ✅ Swift found at: $($swiftPath.Source)" -ForegroundColor Green
+          $swiftDir = Split-Path $swiftPath.Source -Parent
+          $toolchainRoot = Split-Path $swiftDir -Parent | Split-Path -Parent
+          Write-Host "  Swift directory: $swiftDir" -ForegroundColor Cyan
+          Write-Host "  Toolchain root (likely): $toolchainRoot" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "⚠️  This location should be added to cache paths!" -ForegroundColor Yellow
+        } else {
+          Write-Host "  ❌ Swift still not found after fallback setup" -ForegroundColor Red
+        }
     
     - name: Save Swift toolchain to cache (if not already cached)
       if: steps.swift-cache.outputs.cache-hit != 'true' || steps.configure-swift-path.outputs.swift_not_found == 'true'
