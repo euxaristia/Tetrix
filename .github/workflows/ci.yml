@@ -18,36 +18,18 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, macos-latest, windows-latest]
-    
+  build-linux:
+    runs-on: ubuntu-22.04
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup Swift (Ubuntu)
-      if: matrix.os == 'ubuntu-22.04'
+    - name: Setup Swift
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
     
-    - name: Setup Swift (macOS)
-      if: matrix.os == 'macos-latest'
-      uses: SwiftyLab/setup-swift@latest
-      with:
-        swift-version: "6.2.1"
-    
-    - name: Setup Swift (Windows)
-      if: matrix.os == 'windows-latest'
-      uses: SwiftyLab/setup-swift@latest
-      with:
-        swift-version: "6.2.1"
-    
-    - name: Install SDL3 (Ubuntu)
-      if: matrix.os == 'ubuntu-22.04'
+    - name: Install SDL3
       run: |
         sudo apt-get update
         # Try system packages first (if available)
@@ -72,13 +54,7 @@ jobs:
           sudo ldconfig
         fi
     
-    - name: Install SDL3 (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew install sdl3
-    
-    - name: Build Release (Ubuntu)
-      if: matrix.os == 'ubuntu-22.04'
+    - name: Build Release
       env:
         LIBRARY_PATH: /usr/local/lib
         LD_LIBRARY_PATH: /usr/local/lib
@@ -87,20 +63,81 @@ jobs:
         # Build with static Swift standard library linking
         swift build -c release --static-swift-stdlib
     
-    - name: Build Release (macOS)
-      if: matrix.os == 'macos-latest'
+    - name: Upload Binary Artifact
+      if: github.event_name == 'push'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tetrix-linux
+        path: .build/release/Tetrix
+        retention-days: 1
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: "6.2.1"
+    
+    - name: Install SDL3
+      run: |
+        brew install sdl3
+    
+    - name: Build Release
       env:
         LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
       run: |
         # Build with static Swift standard library linking
         swift build -c release --static-swift-stdlib
     
-    - name: Setup MSBuild (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Rename Binary
+      if: github.event_name == 'push'
+      run: |
+        if [ -f .build/release/Tetrix ]; then
+          mv .build/release/Tetrix .build/release/TetrixDarwin
+          echo "Renamed Tetrix to TetrixDarwin"
+        else
+          echo "Error: .build/release/Tetrix not found"
+          ls -la .build/release/ || echo "Release directory does not exist"
+          exit 1
+        fi
+    
+    - name: Verify Binary Before Upload
+      if: github.event_name == 'push'
+      run: |
+        if [ ! -f .build/release/TetrixDarwin ]; then
+          echo "Error: TetrixDarwin binary not found after rename"
+          ls -la .build/release/ || echo "Release directory does not exist"
+          exit 1
+        fi
+        echo "TetrixDarwin binary found, size: $(stat -f%z .build/release/TetrixDarwin 2>/dev/null || stat -c%s .build/release/TetrixDarwin 2>/dev/null || echo 'unknown') bytes"
+    
+    - name: Upload Binary Artifact
+      if: github.event_name == 'push'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tetrix-macos
+        path: .build/release/TetrixDarwin
+        retention-days: 1
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: "6.2.1"
+    
+    - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3.1
     
-    - name: Install SDL3 Static Libraries (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Install SDL3 Static Libraries
       shell: pwsh
       run: |
         # Build SDL3 from source (more reliable than vcpkg)
@@ -162,21 +199,11 @@ jobs:
           exit 1
         }
         
-        # Copy headers
-        $sdl3IncludePath = Join-Path $sdl3Dir "include"
-        New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\sdl3-headers" | Out-Null
-        if (Test-Path "$sdl3IncludePath\SDL3") {
-          Copy-Item "$sdl3IncludePath\SDL3\*" "$env:GITHUB_WORKSPACE\sdl3-headers\" -Recurse -ErrorAction SilentlyContinue
-          Write-Host "Copied SDL3 headers to sdl3-headers/"
-        } else {
-          Write-Host "Warning: SDL3 headers not found at $sdl3IncludePath\SDL3"
-        }
+        # Headers not copied - using only rewritten headers from Sources/CSDL3/include/SDL3/
         
         Pop-Location
     
-    
-    - name: Build Static Release with Tenebris Obfuscation (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Build Static Release with Tenebris Obfuscation
       shell: pwsh
       run: |
         # Build statically linked release executable with Tenebris obfuscation
@@ -262,8 +289,8 @@ jobs:
         
         Write-Host "`nStatic release build complete: $exePath" -ForegroundColor Green
     
-    - name: Bundle Windows Release (Windows)
-      if: matrix.os == 'windows-latest' && github.event_name == 'push'
+    - name: Bundle Release
+      if: github.event_name == 'push'
       shell: pwsh
       run: |
         # Use architecture-specific path for Windows
@@ -286,46 +313,8 @@ jobs:
         Write-Host "`nNote: This executable uses --static-swift-stdlib and should be portable" -ForegroundColor Yellow
         Write-Host "  System DLLs (like KERNEL32.DLL) are provided by Windows and don't need bundling" -ForegroundColor Yellow
     
-    - name: Rename macOS Binary
-      if: matrix.os == 'macos-latest' && github.event_name == 'push'
-      run: |
-        if [ -f .build/release/Tetrix ]; then
-          mv .build/release/Tetrix .build/release/TetrixDarwin
-          echo "Renamed Tetrix to TetrixDarwin"
-        else
-          echo "Error: .build/release/Tetrix not found"
-          ls -la .build/release/ || echo "Release directory does not exist"
-          exit 1
-        fi
-    
-    - name: Upload Linux Binary Artifact
-      if: matrix.os == 'ubuntu-22.04' && github.event_name == 'push'
-      uses: actions/upload-artifact@v4
-      with:
-        name: tetrix-linux
-        path: .build/release/Tetrix
-        retention-days: 1
-    
-    - name: Verify macOS Binary Before Upload
-      if: matrix.os == 'macos-latest' && github.event_name == 'push'
-      run: |
-        if [ ! -f .build/release/TetrixDarwin ]; then
-          echo "Error: TetrixDarwin binary not found after rename"
-          ls -la .build/release/ || echo "Release directory does not exist"
-          exit 1
-        fi
-        echo "TetrixDarwin binary found, size: $(stat -f%z .build/release/TetrixDarwin 2>/dev/null || stat -c%s .build/release/TetrixDarwin 2>/dev/null || echo 'unknown') bytes"
-    
-    - name: Upload macOS Binary Artifact
-      if: matrix.os == 'macos-latest' && github.event_name == 'push'
-      uses: actions/upload-artifact@v4
-      with:
-        name: tetrix-macos
-        path: .build/release/TetrixDarwin
-        retention-days: 1
-    
-    - name: Upload Windows Binary Artifact
-      if: matrix.os == 'windows-latest' && github.event_name == 'push'
+    - name: Upload Binary Artifact
+      if: github.event_name == 'push'
       uses: actions/upload-artifact@v4
       with:
         name: tetrix-windows
@@ -333,7 +322,7 @@ jobs:
         retention-days: 1
 
   release:
-    needs: build
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:

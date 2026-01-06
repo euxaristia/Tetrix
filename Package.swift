@@ -20,8 +20,8 @@ let package = Package(
             // C module for SDL3 headers only (no source files)
             cSettings: [
                 .headerSearchPath("include"),
-                // Windows: Add header path for statically built SDL3
-                .headerSearchPath("sdl3-headers", .when(platforms: [.windows]))
+                // Only use rewritten headers from Sources/CSDL3/include/SDL3/
+                // No external SDL3 headers are included
             ],
             linkerSettings: [
                 // Windows: Link against static libraries (built in CI, renamed to standard names)
@@ -85,8 +85,9 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "/DEBUG:NONE"], .when(platforms: [.windows], configuration: .release)),
                 .unsafeFlags(["-Xlinker", "/OPT:REF"], .when(platforms: [.windows], configuration: .release)),
                 .unsafeFlags(["-Xlinker", "/OPT:ICF"], .when(platforms: [.windows], configuration: .release)),
-                // Strip unnecessary symbols
+                // Strip unnecessary symbols - remove unreferenced code and symbols
                 .unsafeFlags(["-Xlinker", "/INCREMENTAL:NO"], .when(platforms: [.windows], configuration: .release)),
+                // Note: Full symbol stripping requires llvm-strip post-build step (handled in CI)
                 // Build as Windows GUI application (no console window) but keep main() entry point
                 .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS"], .when(platforms: [.windows])),
                 .unsafeFlags(["-Xlinker", "/ENTRY:mainCRTStartup"], .when(platforms: [.windows])),

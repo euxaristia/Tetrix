@@ -203,17 +203,7 @@ if ($sdl3Lib) {
     exit 1
 }
 
-# Copy headers if needed
-$sdl3IncludePath = Join-Path $sdl3Dir "include"
-$projectHeadersPath = Join-Path $projectRoot "sdl3-headers"
-if (-not (Test-Path $projectHeadersPath)) {
-    New-Item -ItemType Directory -Force -Path $projectHeadersPath | Out-Null
-}
-if (Test-Path "$sdl3IncludePath\SDL3") {
-    Write-Host "Copying SDL3 headers..." -ForegroundColor Yellow
-    Copy-Item "$sdl3IncludePath\SDL3\*" "$projectHeadersPath\" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "  Headers copied to: $projectHeadersPath" -ForegroundColor Cyan
-}
+# Headers are not copied - using only rewritten headers from Sources/CSDL3/include/SDL3/
 
 Pop-Location
 
