@@ -69,9 +69,18 @@ let package = Package(
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3")
+                .linkedLibrary("SDL3"),
+                // Static linking and optimization flags for Windows release builds
+                // Note: Static C runtime linking may require specific MSVC setup
+                // These flags optimize the binary and remove debug info for obfuscation
+                .unsafeFlags(["-Xlinker", "/DEBUG:NONE"], .when(platforms: [.windows], configuration: .release)),
+                .unsafeFlags(["-Xlinker", "/OPT:REF"], .when(platforms: [.windows], configuration: .release)),
+                .unsafeFlags(["-Xlinker", "/OPT:ICF"], .when(platforms: [.windows], configuration: .release)),
+                // Strip unnecessary symbols
+                .unsafeFlags(["-Xlinker", "/INCREMENTAL:NO"], .when(platforms: [.windows], configuration: .release)),
                 // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
                 // Note: PulseAudio is linked by CPulseAudio target
+                // Note: Swift runtime will still be dynamically linked (standard for Swift on Windows)
             ]
         )
     ]

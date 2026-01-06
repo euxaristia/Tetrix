@@ -399,7 +399,7 @@ class SDL3Game {
         let targetFPS = 60.0
         let frameTime = 1.0 / targetFPS
         
-        // Simple, fast game loop - direct access, no threading overhead
+        // Simple, fast game loop - process events continuously for responsive input
         while running {
             let now = getCurrentTime()
             
@@ -430,8 +430,8 @@ class SDL3Game {
                 }
             }
             
-            // Always pump events every frame for responsive input
-            // Flush analog events when controller is active to prevent queue buildup
+            // Process events continuously - don't wait for render frame for input responsiveness
+            // This ensures input is processed immediately, not delayed by frame rate limiting
             handleEvents()
             
             // Handle held D-pad down for soft drop
@@ -468,8 +468,7 @@ class SDL3Game {
                 render()
                 lastFrameTime = now
             }
-            // Don't process events again here - already processed at start of loop
-            // This avoids double-processing and controller event flooding
+            // Events are processed continuously above, so input is never delayed by render timing
         }
     }
     
@@ -477,32 +476,53 @@ class SDL3Game {
         // Pump events from OS into SDL's queue first - critical for input responsiveness
         // Always pump every frame to ensure no input is missed (works on all platforms with SDL3)
         SDLEventHelper.pumpEvents()
-        // Flush analog events immediately after pumping when NOT using controller to prevent queue buildup
-        // This ensures keyboard events aren't delayed by analog stick events from a connected gamepad
-        if !usingController {
-            SDLEventHelper.flushAnalogEvents()
-        }
+        // Always flush analog events immediately after pumping to prevent queue buildup
+        // Analog stick events flood the queue even when using controller, causing lag
+        SDLEventHelper.flushAnalogEvents()
         handleEventsNoPump()
     }
     
     private func handleEventsNoPump() {
         // Poll for events using Swift-native event system
-        // Process events efficiently - prioritize keyboard input responsiveness
+        // Process events efficiently - handle controller input without lag
         var eventsProcessed = 0
-        // Increase max events for keyboard to ensure responsiveness even if analog events flood queue
-        let maxEvents = usingController ? 10 : 100  // Higher limit for keyboard mode
+        var filteredEvents = 0
+        // Higher limit for controller mode since we're flushing analog events aggressively
+        let maxEvents = usingController ? 50 : 100
+        let maxFilteredEvents = 1000  // Allow many filtered events before giving up
         
+        // Continue polling until we find events or hit limits
+        // Filtered events (analog sticks) return nil but we need to keep polling through them
         while true {
-            // Always flush analog events first when not using controller to prevent queue buildup
-            if !usingController {
-                SDLEventHelper.flushAnalogEvents()
-            }
-            
             guard let event = EventPoller.poll() else {
-                // No more events available
-                break
+                // No event returned - could be filtered analog event or queue empty
+                filteredEvents += 1
+                
+                // If we've filtered too many events, flush the queue and check if it's actually empty
+                if filteredEvents >= maxFilteredEvents {
+                    SDLEventHelper.flushAnalogEvents()
+                    filteredEvents = 0
+                    // Check if queue is empty by trying to poll directly
+                    var testEvent = SDL_Event()
+                    if !SDLEventHelper.pollEvent(&testEvent) {
+                        // Queue is empty
+                        break
+                    }
+                    // Queue had more events, continue polling
+                    continue
+                }
+                
+                // If we've processed enough events, take a break
+                if eventsProcessed >= maxEvents {
+                    break
+                }
+                
+                // Continue polling (filtered event, keep going)
+                continue
             }
             
+            // Got a real event - reset filtered counter and process it
+            filteredEvents = 0
             eventsProcessed += 1
             
             // Process the event immediately
@@ -553,12 +573,16 @@ class SDL3Game {
             
             // Limit to prevent infinite loops
             if eventsProcessed >= maxEvents {
-                // If we hit the limit, flush remaining analog events to prevent queue buildup
-                if usingController {
-                    SDLEventHelper.flushAnalogEvents()
-                }
+                // Flush remaining analog events to prevent queue buildup
+                SDLEventHelper.flushAnalogEvents()
                 break
             }
+        }
+        
+        // After processing events, flush any remaining analog events to keep queue clean
+        // This is especially important when using controller to prevent lag buildup
+        if usingController {
+            SDLEventHelper.flushAnalogEvents()
         }
     }
     
