@@ -208,7 +208,11 @@ struct SDLWindowHelper {
     
     /// Set render logical presentation (legacy C type version)
     static func setLogicalPresentation(renderer: OpaquePointer?, width: Int32, height: Int32, mode: SDL_RendererLogicalPresentation) -> Bool {
+        #if os(Windows)
         return SDL_SetRenderLogicalPresentation(renderer, width, height, CSDL3.SDL_RendererLogicalPresentation(rawValue: Int32(mode)))
+        #else
+        return SDL_SetRenderLogicalPresentation(renderer, width, height, CSDL3.SDL_RendererLogicalPresentation(rawValue: UInt32(mode)))
+        #endif
     }
     
     /// Show window

@@ -169,56 +169,10 @@ typedef void* SDL_FunctionPointer;
 #define SDL_max(x, y) (((x) > (y)) ? (x) : (y))
 #endif
 
-/* Endian conversion macros */
-#ifndef SDL_SwapLE16
-#define SDL_SwapLE16(x) (x)
-#endif
-#ifndef SDL_SwapBE16
-#define SDL_SwapBE16(x) SDL_Swap16(x)
-#endif
-#ifndef SDL_SwapLE32
-#define SDL_SwapLE32(x) (x)
-#endif
-#ifndef SDL_SwapBE32
-#define SDL_SwapBE32(x) SDL_Swap32(x)
-#endif
-#ifndef SDL_SwapLE64
-#define SDL_SwapLE64(x) (x)
-#endif
-#ifndef SDL_SwapBE64
-#define SDL_SwapBE64(x) SDL_Swap64(x)
-#endif
+/* Endian conversion macros - these are defined in SDL_endian.h */
+/* We don't define SDL_Swap16/32/64 here - let SDL_endian.h handle them */
 
-/* Placeholder swap functions - these may need proper implementation */
-#ifndef SDL_Swap16
-#define SDL_Swap16(x) ((Uint16)(((x) << 8) | ((x) >> 8)))
-#endif
-#ifndef SDL_Swap32
-#define SDL_Swap32(x) ((Uint32)(((x) << 24) | (((x) << 8) & 0x00FF0000) | (((x) >> 8) & 0x0000FF00) | ((x) >> 24)))
-#endif
-#ifndef SDL_Swap64
-#define SDL_Swap64(x) ((Uint64)(((x) << 56) | (((x) << 40) & 0x00FF000000000000ULL) | (((x) << 24) & 0x0000FF0000000000ULL) | (((x) << 8) & 0x000000FF00000000ULL) | (((x) >> 8) & 0x00000000FF000000ULL) | (((x) >> 24) & 0x0000000000FF0000ULL) | (((x) >> 40) & 0x000000000000FF00ULL) | ((x) >> 56)))
-#endif
-
-/* Endian detection */
-#ifndef SDL_BYTEORDER
-#if defined(__LITTLE_ENDIAN__) || defined(__LITTLE_ENDIAN) || defined(_LITTLE_ENDIAN) || \
-    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-#define SDL_BYTEORDER SDL_LIL_ENDIAN
-#elif defined(__BIG_ENDIAN__) || defined(__BIG_ENDIAN) || defined(_BIG_ENDIAN) || \
-      (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-#define SDL_BYTEORDER SDL_BIG_ENDIAN
-#else
-/* Default to little endian for x86/x64 */
-#define SDL_BYTEORDER SDL_LIL_ENDIAN
-#endif
-#endif
-
-#ifndef SDL_LIL_ENDIAN
-#define SDL_LIL_ENDIAN 1234
-#endif
-#ifndef SDL_BIG_ENDIAN
-#define SDL_BIG_ENDIAN 4321
-#endif
+/* Endian detection - these are defined in SDL_endian.h */
+/* We don't define SDL_BYTEORDER/SDL_LIL_ENDIAN/SDL_BIG_ENDIAN here - let SDL_endian.h handle them */
 
 #endif /* SDL_stdinc_h_ */

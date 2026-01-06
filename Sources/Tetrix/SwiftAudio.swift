@@ -44,7 +44,11 @@ class SwiftAudioStream {
         // Create SDL audio spec
         var sdlSpec = SDL_AudioSpec()
         sdlSpec.freq = sampleRate
+        #if os(Windows)
         sdlSpec.format = SDL_AudioFormat(rawValue: Int32(format))
+        #else
+        sdlSpec.format = SDL_AudioFormat(rawValue: UInt32(format))
+        #endif
         sdlSpec.channels = Int32(channels)
         
         // Create stream WITH a working callback
