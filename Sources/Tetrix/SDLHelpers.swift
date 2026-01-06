@@ -222,6 +222,8 @@ struct SDLWindowHelper {
     /// Show window
     static func show(window: OpaquePointer?) {
         SDL_ShowWindow(window)
+        // Raise window to ensure it gets focus and is responsive
+        SDL_RaiseWindow(window)
     }
     
     /// Maximize window
@@ -263,6 +265,13 @@ struct SDLEventHelper {
     /// Poll for events - returns true if an event was available
     static func pollEvent(_ event: inout SDL_Event) -> Bool {
         return SDL_PollEvent(&event)
+    }
+    
+    /// Check if there are pending events in the queue (without removing them)
+    static func hasPendingEvents() -> Bool {
+        // Use SDL_HasEvents to check without consuming events
+        // SDL_EVENT_FIRST (0x0000) to SDL_EVENT_LAST (0x7FFF) covers all event types
+        return SDL_HasEvents(0x0000, 0x7FFF)
     }
     
     /// Get keyboard event scancode (Swift wrapper for cleaner access)

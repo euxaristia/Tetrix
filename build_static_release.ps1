@@ -42,14 +42,52 @@ Write-Host "    (BlocksRuntime.dll, Dispatch.dll may still be needed)" -Foregrou
 
 # Strip symbols in place using llvm-strip if available
 $stripTool = "llvm-strip"
+$foundStrip = $false
 if (Get-Command $stripTool -ErrorAction SilentlyContinue) {
-    Write-Host "`nStripping symbols..." -ForegroundColor Yellow
+    Write-Host "`nStripping symbols with llvm-strip..." -ForegroundColor Yellow
     & $stripTool --strip-all $exePath
-    $strippedInfo = Get-Item $exePath
-    $strippedMB = [math]::Round($strippedInfo.Length / 1MB, 2)
-    Write-Host "  Size after stripping: $strippedMB MB" -ForegroundColor Cyan
-} else {
-    Write-Host "`nNote: llvm-strip not found, skipping symbol stripping" -ForegroundColor Yellow
+    if ($LASTEXITCODE -eq 0) {
+        $strippedInfo = Get-Item $exePath
+        $strippedMB = [math]::Round($strippedInfo.Length / 1MB, 2)
+        Write-Host "  Size after stripping: $strippedMB MB" -ForegroundColor Cyan
+        Write-Host "  Symbols stripped successfully" -ForegroundColor Green
+        $foundStrip = $true
+    }
+}
+
+# Try common llvm-strip locations if not found in PATH
+if (-not $foundStrip) {
+    Write-Host "`nWarning: llvm-strip not found in PATH, trying common locations..." -ForegroundColor Yellow
+    $possiblePaths = @(
+        "$env:ProgramFiles\LLVM\bin\llvm-strip.exe",
+        "$env:ProgramFiles(x86)\LLVM\bin\llvm-strip.exe",
+        "$env:LOCALAPPDATA\Programs\Swift\Toolchains\*\usr\bin\llvm-strip.exe"
+    )
+    foreach ($path in $possiblePaths) {
+        $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+        if ($resolved) {
+            foreach ($tool in $resolved) {
+                if (Test-Path $tool) {
+                    Write-Host "  Found llvm-strip at: $tool" -ForegroundColor Cyan
+                    & $tool --strip-all $exePath
+                    if ($LASTEXITCODE -eq 0) {
+                        $strippedInfo = Get-Item $exePath
+                        $strippedMB = [math]::Round($strippedInfo.Length / 1MB, 2)
+                        Write-Host "  Size after stripping: $strippedMB MB" -ForegroundColor Cyan
+                        Write-Host "  Symbols stripped successfully" -ForegroundColor Green
+                        $foundStrip = $true
+                        break
+                    }
+                }
+            }
+        }
+        if ($foundStrip) { break }
+    }
+    
+    if (-not $foundStrip) {
+        Write-Host "  Could not find llvm-strip, skipping symbol stripping" -ForegroundColor Yellow
+        Write-Host "  Install LLVM tools or add llvm-strip to PATH for symbol stripping" -ForegroundColor Yellow
+    }
 }
 
 Write-Host "`nDone! Static release build complete." -ForegroundColor Green

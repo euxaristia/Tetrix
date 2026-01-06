@@ -243,6 +243,9 @@ class SDL3Game {
         if let sdlRenderer = SDLRenderHelper.create(window: window) {
             renderer = Renderer(sdlRenderer: sdlRenderer)
             
+            // Set logical presentation immediately after renderer creation to prevent scaling issues
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+            
             // Initialize text renderer and set renderer
             if let textRenderer = SwiftTextRenderer() {
                 textRenderer.setRenderer(renderer!)
@@ -344,6 +347,9 @@ class SDL3Game {
         if let sdlRenderer = SDLRenderHelper.create(window: window) {
             renderer = Renderer(sdlRenderer: sdlRenderer)
             
+            // Set logical presentation immediately after renderer creation to prevent scaling issues
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+            
             // Initialize text renderer and set renderer (works on all platforms with SDL3)
             if let textRenderer = SwiftTextRenderer() {
                 textRenderer.setRenderer(renderer!)
@@ -405,6 +411,7 @@ class SDL3Game {
             
             // Window is created hidden - show it on first frame after SDL is ready
             // This works on all platforms now (Linux and Windows both use SDL3)
+            // Logical presentation is already set after renderer creation, so window will show with correct scaling
             if !windowShown {
                 if let sdlWindow = window {
                     // Pump events first to ensure SDL is ready
@@ -420,19 +427,23 @@ class SDL3Game {
                     // Pump events again to let window manager process the show
                     SDLEventHelper.pumpEvents()
                     
-                    // Set logical presentation after window is shown to ensure correct aspect ratio
-                    // Use integer scale mode to maintain aspect ratio perfectly (2x scale, no letterbox bars)
-                    if let sdlRenderer = renderer?.sdlHandle {
-                        _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
-                    }
+                    // Render once more to ensure correct display before window becomes visible
+                    render()
+                    
+                    // Logical presentation is already set after renderer creation, no need to set again
+                    // But update for fullscreen if needed (handled in init)
                     
                     windowShown = true
                 }
             }
             
-            // Process events continuously - don't wait for render frame for input responsiveness
-            // This ensures input is processed immediately, not delayed by frame rate limiting
-            handleEvents()
+            // Process events multiple times per loop iteration for maximum responsiveness
+            // This is especially important when debugging, as the debugger can cause delays
+            // Process events up to 3 times per iteration to ensure we catch all input
+            // Even when debugger causes delays between loop iterations
+            for _ in 0..<3 {
+                handleEvents()
+            }
             
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat(now: now)
@@ -475,7 +486,14 @@ class SDL3Game {
     private func handleEvents() {
         // Pump events from OS into SDL's queue first - critical for input responsiveness
         // Always pump every frame to ensure no input is missed (works on all platforms with SDL3)
+        // When debugging, pump multiple times to compensate for debugger delays
+        #if DEBUG
+        for _ in 0..<3 {
+            SDLEventHelper.pumpEvents()
+        }
+        #else
         SDLEventHelper.pumpEvents()
+        #endif
         // Always flush analog events immediately after pumping to prevent queue buildup
         // Analog stick events flood the queue even when using controller, causing lag
         SDLEventHelper.flushAnalogEvents()
