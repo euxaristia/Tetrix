@@ -668,12 +668,11 @@ jobs:
           # Method 3: Try with Swift lib directories in PATH (for DLL dependencies)
           if (-not $swiftVerified) {
             Write-Host "   Attempting to locate and add Swift DLL dependencies..." -ForegroundColor Gray
-            $swiftLibDirs = @(
-              Join-Path $swiftToolchainRoot "usr\lib\swift\windows",
-              Join-Path $swiftToolchainRoot "usr\lib\swift",
-              Join-Path $swiftToolchainRoot "usr\lib",
-              $swiftToolchainRoot
-            )
+            $swiftLibDirs = @()
+            $swiftLibDirs += Join-Path $swiftToolchainRoot "usr\lib\swift\windows"
+            $swiftLibDirs += Join-Path $swiftToolchainRoot "usr\lib\swift"
+            $swiftLibDirs += Join-Path $swiftToolchainRoot "usr\lib"
+            $swiftLibDirs += $swiftToolchainRoot
             
             $foundLibs = @()
             foreach ($libDir in $swiftLibDirs) {
