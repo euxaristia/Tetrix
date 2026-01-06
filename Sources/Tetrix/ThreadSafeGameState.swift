@@ -220,25 +220,42 @@ class ThreadPoolManager {
         print("Thread pool initialized with \(maxThreads) max concurrent threads")
     }
     
+    /// Thread-safe container for parallel operation results
+    private final class ResultsContainer<T>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var results: [T?]
+        
+        init(count: Int) {
+            self.results = Array<T?>(repeating: nil, count: count)
+        }
+        
+        func set(_ value: T, at index: Int) {
+            lock.lock()
+            defer { lock.unlock() }
+            results[index] = value
+        }
+        
+        func getAll() -> [T] {
+            lock.lock()
+            defer { lock.unlock() }
+            return results.compactMap { $0 }
+        }
+    }
+    
     /// Execute parallel rendering operations
     func parallelRender<T>(_ operations: [() -> T], completion: @escaping ([T]) -> Void) {
         let group = DispatchGroup()
-        let results = UnsafeMutablePointer<Array<T?>>.allocate(capacity: 1)
-        results.pointee = Array<T?>(repeating: nil, count: operations.count)
-        let lock = NSLock()
+        let resultsContainer = ResultsContainer<T>(count: operations.count)
         
         for (index, operation) in operations.enumerated() {
             renderQueue.async(group: group) {
                 let result = operation()
-                lock.lock()
-                results.pointee[index] = result
-                lock.unlock()
+                resultsContainer.set(result, at: index)
             }
         }
         
         group.notify(queue: .main) {
-            let finalResults = results.pointee.compactMap { $0 }
-            results.deallocate()
+            let finalResults = resultsContainer.getAll()
             completion(finalResults)
         }
     }
