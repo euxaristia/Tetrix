@@ -615,23 +615,130 @@ jobs:
         }
         
         if ($swiftFound -and $swiftBin) {
-          # Add to PATH for this step
-          $env:Path = "$swiftBin;$env:Path"
-          # Persist PATH for subsequent steps using GITHUB_ENV
-          $currentPath = $env:Path
-          Write-Output "PATH=$swiftBin;$currentPath" >> $env:GITHUB_ENV
-          Write-Host "`n✅ Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
+          # Swift on Windows may need additional directories in PATH for DLLs
+          # Add the Swift bin directory and its parent directories to PATH
+          $swiftToolchainRoot = Split-Path (Split-Path $swiftBin -Parent) -Parent
+          $swiftUsrBin = Split-Path $swiftBin -Parent
+          $swiftLibPath = Join-Path $swiftToolchainRoot "usr\lib"
           
-          # Verify Swift works
+          # Build PATH: Swift bin, Swift usr/bin (if different), current PATH
+          $swiftPathComponents = @($swiftBin)
+          if ($swiftUsrBin -ne $swiftBin) {
+            $swiftPathComponents += $swiftUsrBin
+          }
+          $newPath = ($swiftPathComponents -join ";") + ";" + $env:Path
+          
+          # Add to PATH for this step
+          $env:Path = $newPath
+          # Persist PATH for subsequent steps using GITHUB_ENV
+          Write-Output "PATH=$newPath" >> $env:GITHUB_ENV
+          Write-Host "`n✅ Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
+          Write-Host "   Swift toolchain root: $swiftToolchainRoot" -ForegroundColor Gray
+          
+          # Verify Swift works - try multiple methods
           Write-Host "Verifying Swift installation..." -ForegroundColor Yellow
-          $swiftVersion = & "$swiftBin\swift.exe" --version 2>&1
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
-            Write-Host "Swift version: $($swiftVersion[0])" -ForegroundColor Gray
-          } else {
-            Write-Host "❌ Warning: Swift found but version check failed" -ForegroundColor Yellow
-            Write-Host "Error output: $swiftVersion" -ForegroundColor Red
+          $swiftVerified = $false
+          
+          # Method 1: Try with full path
+          try {
+            $swiftVersion = & "$swiftBin\swift.exe" --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and $swiftVersion) {
+              Write-Host "✅ Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
+              Write-Host "Swift version: $($swiftVersion[0])" -ForegroundColor Gray
+              $swiftVerified = $true
+            }
+          } catch {
+            Write-Host "   Method 1 (full path) failed: $_" -ForegroundColor DarkGray
+          }
+          
+          # Method 2: Try with just 'swift' command (relying on PATH)
+          if (-not $swiftVerified) {
+            try {
+              $swiftVersion = & "swift" --version 2>&1
+              if ($LASTEXITCODE -eq 0 -and $swiftVersion) {
+                Write-Host "✅ Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
+                Write-Host "Swift version: $($swiftVersion[0])" -ForegroundColor Gray
+                $swiftVerified = $true
+              }
+            } catch {
+              Write-Host "   Method 2 (PATH command) failed: $_" -ForegroundColor DarkGray
+            }
+          }
+          
+          # Method 3: Try with Swift lib directories in PATH (for DLL dependencies)
+          if (-not $swiftVerified) {
+            Write-Host "   Attempting to locate and add Swift DLL dependencies..." -ForegroundColor Gray
+            $swiftLibDirs = @(
+              Join-Path $swiftToolchainRoot "usr\lib\swift\windows",
+              Join-Path $swiftToolchainRoot "usr\lib\swift",
+              Join-Path $swiftToolchainRoot "usr\lib",
+              $swiftToolchainRoot
+            )
+            
+            $foundLibs = @()
+            foreach ($libDir in $swiftLibDirs) {
+              if (Test-Path $libDir) {
+                # Check if it contains DLLs
+                $dlls = Get-ChildItem -Path $libDir -Filter "*.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($dlls) {
+                  Write-Host "   ✅ Found Swift lib directory with DLLs: $libDir" -ForegroundColor Green
+                  $foundLibs += $libDir
+                }
+              }
+            }
+            
+            # Add all found lib directories to PATH
+            if ($foundLibs.Count -gt 0) {
+              $expandedPath = ($foundLibs -join ";") + ";" + $env:Path
+              $env:Path = $expandedPath
+              Write-Output "PATH=$expandedPath" >> $env:GITHUB_ENV
+              
+              # Try again with all lib directories in PATH
+              try {
+                $swiftVersion = & "$swiftBin\swift.exe" --version 2>&1
+                if ($LASTEXITCODE -eq 0 -and $swiftVersion -and $swiftVersion.Count -gt 0) {
+                  Write-Host "✅ Swift toolchain restored from cache (after adding lib directories to PATH)" -ForegroundColor Green
+                  Write-Host "Swift version: $($swiftVersion[0])" -ForegroundColor Gray
+                  $swiftVerified = $true
+                } else {
+                  Write-Host "   Still failed: Exit code: $LASTEXITCODE" -ForegroundColor DarkGray
+                  if ($swiftVersion) {
+                    Write-Host "   Output: $($swiftVersion | Out-String)" -ForegroundColor DarkGray
+                  }
+                }
+              } catch {
+                Write-Host "   Still failed after adding lib directories: $_" -ForegroundColor DarkGray
+              }
+            } else {
+              Write-Host "   ⚠️  No Swift lib directories with DLLs found" -ForegroundColor Yellow
+            }
+          }
+          
+          # Method 4: Check if file exists and provide diagnostic info
+          if (-not $swiftVerified) {
+            $swiftExePath = Join-Path $swiftBin "swift.exe"
+            if (Test-Path $swiftExePath) {
+              $fileInfo = Get-Item $swiftExePath
+              Write-Host "   Swift executable diagnostics:" -ForegroundColor Gray
+              Write-Host "     Path: $swiftExePath" -ForegroundColor Gray
+              Write-Host "     Size: $([math]::Round($fileInfo.Length / 1KB, 2)) KB" -ForegroundColor Gray
+              Write-Host "     Last modified: $($fileInfo.LastWriteTime)" -ForegroundColor Gray
+              
+              # Try to use dependency walker or similar - but on Windows we can try loading it
+              # For now, just note that the executable exists but can't run
+              Write-Host "   ❌ Executable exists but cannot execute --version command" -ForegroundColor Red
+              Write-Host "   This likely indicates missing DLL dependencies or an incomplete cache" -ForegroundColor Yellow
+            }
+          }
+          
+          if (-not $swiftVerified) {
+            Write-Host "`n❌ Warning: Swift found but version check failed" -ForegroundColor Yellow
+            Write-Host "   Executable exists at: $swiftBin\swift.exe" -ForegroundColor Yellow
+            Write-Host "   But cannot execute successfully - likely missing DLL dependencies" -ForegroundColor Yellow
+            Write-Host "   Cache may be incomplete. Will attempt fallback setup..." -ForegroundColor Yellow
             $swiftFound = $false
+          } else {
+            Write-Host "`n✅ Swift verification successful!" -ForegroundColor Green
           }
         }
         
