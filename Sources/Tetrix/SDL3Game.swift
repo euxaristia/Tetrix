@@ -381,26 +381,9 @@ class SDL3Game {
             }
             #endif
             
-            // Only pump events periodically to avoid performance issues with controllers
-            // When controller is active, pump less frequently (every 50ms) for button responsiveness
-            // but not every frame to avoid analog stick event flooding
-            if usingController {
-                // With controller: pump every 50ms for button events, flush analog events
-                if now - lastPumpTime >= 0.05 {
-                    handleEvents()
-                    lastPumpTime = now
-                } else {
-                    handleEventsNoPump()
-                }
-            } else {
-                // Without controller: pump periodically for window responsiveness
-                if now - lastPumpTime >= pumpInterval {
-                    handleEvents()
-                    lastPumpTime = now
-                } else {
-                    handleEventsNoPump()
-                }
-            }
+            // Always pump events every frame for responsive input
+            // Flush analog events when controller is active to prevent queue buildup
+            handleEvents()
             
             // Handle held D-pad down for soft drop
             handleDPadDownRepeat(now: now)
@@ -442,8 +425,8 @@ class SDL3Game {
     }
     
     private func handleEvents() {
-        // Pump events from OS into SDL's queue first - critical for window responsiveness on Linux
-        // When controller is active, pump less frequently but still pump for button responsiveness
+        // Pump events from OS into SDL's queue first - critical for input responsiveness
+        // Always pump every frame to ensure no input is missed
         #if os(Linux)
         SDLEventHelper.pumpEvents()
         // Flush analog events immediately after pumping to prevent queue buildup
