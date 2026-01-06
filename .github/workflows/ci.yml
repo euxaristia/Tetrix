@@ -44,11 +44,18 @@ jobs:
         path: |
           ${{ runner.temp }}/swift
           ${{ runner.temp }}/swift-*
+          ${{ runner.temp }}/swiftpm
+          ${{ runner.temp }}/swiftpm-*
+          /opt/swift
+          ~/.swift
+          ~/.swiftpm
         key: swift-toolchain-linux-6.2.1-${{ runner.os }}
         restore-keys: |
+          swift-toolchain-linux-6.2.1-${{ runner.os }}-
           swift-toolchain-linux-6.2.1-
     
     - name: Setup Swift
+      if: steps.swift-cache.outputs.cache-hit != 'true'
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: "6.2.1"
@@ -56,17 +63,41 @@ jobs:
         # Help SwiftyLab detect cached Swift if present
         RUNNER_TEMP: ${{ runner.temp }}
     
+    - name: Debug Swift installation location
+      if: steps.swift-cache.outputs.cache-hit != 'true'
+      run: |
+        echo "🔍 Debugging Swift installation location..."
+        echo "RUNNER_TEMP: ${{ runner.temp }}"
+        echo ""
+        echo "Checking ${{ runner.temp }}:"
+        ls -la "${{ runner.temp }}/" 2>/dev/null | grep -i swift || echo "  No swift* directories found"
+        echo ""
+        echo "Checking /opt:"
+        ls -la /opt/ 2>/dev/null | grep -i swift || echo "  No swift directory in /opt/"
+        echo ""
+        echo "Checking home directory:"
+        ls -la ~/.swift* 2>/dev/null || echo "  No ~/.swift* directories found"
+        echo ""
+        echo "Swift binary location:"
+        which swift || echo "  swift not in PATH"
+        swift --version 2>/dev/null || echo "  swift command failed"
+        echo ""
+        echo "Environment variables:"
+        env | grep -i swift || echo "  No SWIFT-related env vars"
+    
     - name: Verify Swift after cache restore
       if: steps.swift-cache.outputs.cache-hit == 'true'
       run: |
         echo "✅ Swift toolchain cache hit - saved ~2.5 minutes!"
+        echo "Restored from:"
+        ls -la "${{ runner.temp }}/" | grep -i swift || echo "  (cache restored)"
         swift --version
     
     - name: Note about cache miss
       if: steps.swift-cache.outputs.cache-hit != 'true'
       run: |
         echo "ℹ️  Cache not found (expected on first run) - Swift will be downloaded"
-        echo "   After this run completes, the Swift toolchain will be cached"
+        echo "   After this run completes, the Swift toolchain will be cached for next run"
         echo "   Subsequent runs will use the cached version (saving ~2.5 minutes)"
     
     - name: Get SDL3 commit hash for cache key
@@ -261,52 +292,93 @@ jobs:
         swift-version: "6.2.1"
     
     - name: Configure Swift PATH from cache
+      id: configure-swift-path
       if: steps.swift-cache.outputs.cache-hit == 'true'
       shell: pwsh
       run: |
         Write-Host "✅ Swift toolchain cache hit - configuring PATH..." -ForegroundColor Green
+        Write-Host "RUNNER_TEMP: $env:RUNNER_TEMP" -ForegroundColor Cyan
+        
+        # Debug: List all directories in RUNNER_TEMP
+        Write-Host "`nChecking RUNNER_TEMP contents:" -ForegroundColor Yellow
+        if (Test-Path $env:RUNNER_TEMP) {
+          Get-ChildItem -Path $env:RUNNER_TEMP -Directory | Where-Object { $_.Name -like "swift*" } | ForEach-Object {
+            Write-Host "  Found: $($_.FullName)" -ForegroundColor Gray
+          }
+        } else {
+          Write-Host "  RUNNER_TEMP does not exist!" -ForegroundColor Red
+        }
+        
         # Find Swift in the cached location and add to PATH
-        $swiftDirs = @(
-          "$env:RUNNER_TEMP\swift",
-          "$env:RUNNER_TEMP\swift-*"
-        )
         $swiftFound = $false
-        foreach ($dirPattern in $swiftDirs) {
-          $resolved = Resolve-Path $dirPattern -ErrorAction SilentlyContinue
-          if ($resolved) {
-            foreach ($dir in $resolved) {
-              $swiftExe = Join-Path $dir "usr\bin\swift.exe"
-              if (Test-Path $swiftExe) {
-                $swiftBin = Join-Path $dir "usr\bin"
-                # Add to PATH for this step
-                $env:Path = "$swiftBin;$env:Path"
-                # Persist PATH for subsequent steps using GITHUB_ENV
-                Write-Output "PATH=$swiftBin;$env:Path" >> $env:GITHUB_ENV
-                Write-Host "Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
-                Write-Host "Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
-                $swiftFound = $true
-                break
-              }
+        $swiftBin = $null
+        
+        # Try different possible locations
+        $searchPaths = @(
+          "$env:RUNNER_TEMP\swift\usr\bin\swift.exe",
+          "$env:RUNNER_TEMP\swift*\usr\bin\swift.exe"
+        )
+        
+        # Also search for any swift.exe in RUNNER_TEMP
+        if (Test-Path $env:RUNNER_TEMP) {
+          $allSwiftDirs = Get-ChildItem -Path $env:RUNNER_TEMP -Directory -Filter "swift*" -ErrorAction SilentlyContinue
+          foreach ($dir in $allSwiftDirs) {
+            $swiftExe = Join-Path $dir.FullName "usr\bin\swift.exe"
+            Write-Host "Checking: $swiftExe" -ForegroundColor Gray
+            if (Test-Path $swiftExe) {
+              $swiftBin = Join-Path $dir.FullName "usr\bin"
+              Write-Host "✅ Found Swift at: $swiftExe" -ForegroundColor Green
+              $swiftFound = $true
+              break
             }
-            if ($swiftFound) { break }
           }
         }
-        if (-not $swiftFound) {
-          Write-Host "Error: Swift not found in cached paths!" -ForegroundColor Red
-          Write-Host "Falling back to setup-swift..." -ForegroundColor Yellow
-          # This will cause an error, but at least we tried
-          exit 1
+        
+        if ($swiftFound -and $swiftBin) {
+          # Add to PATH for this step
+          $env:Path = "$swiftBin;$env:Path"
+          # Persist PATH for subsequent steps using GITHUB_ENV
+          $currentPath = $env:Path
+          Write-Output "PATH=$swiftBin;$currentPath" >> $env:GITHUB_ENV
+          Write-Host "Added Swift to PATH: $swiftBin" -ForegroundColor Cyan
+          
+          # Verify Swift works
+          $swiftVersion = & "$swiftBin\swift.exe" --version 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Swift toolchain restored from cache (saved ~2.5 minutes!)" -ForegroundColor Green
+            Write-Host "Swift version: $($swiftVersion[0])" -ForegroundColor Gray
+          } else {
+            Write-Host "Warning: Swift found but version check failed" -ForegroundColor Yellow
+            $swiftFound = $false
+          }
         }
+        
+        if (-not $swiftFound) {
+          Write-Host "❌ Error: Swift not found in cached paths!" -ForegroundColor Red
+          Write-Host "Cache was hit, but Swift executable not found." -ForegroundColor Yellow
+          Write-Host "This may indicate the cache structure changed. Will run setup-swift..." -ForegroundColor Yellow
+          # Set an output to indicate we need to run setup-swift (don't exit - let fallback run)
+          Write-Output "swift_not_found=true" >> $env:GITHUB_OUTPUT
+        } else {
+          Write-Output "swift_not_found=false" >> $env:GITHUB_OUTPUT
+        }
+    
+    - name: Setup Swift (fallback if cache restore failed)
+      id: swift-fallback
+      if: steps.swift-cache.outputs.cache-hit == 'true' && steps.configure-swift-path.outputs.swift_not_found == 'true'
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: "6.2.1"
     
     - name: Verify Swift installation
       if: steps.swift-cache.outputs.cache-hit == 'true'
       shell: pwsh
       run: |
         if (Get-Command swift -ErrorAction SilentlyContinue) {
-          Write-Host "✅ Swift toolchain restored from cache successfully" -ForegroundColor Green
+          Write-Host "✅ Swift toolchain available successfully" -ForegroundColor Green
           swift --version
         } else {
-          Write-Host "Swift not found after cache restore - this shouldn't happen" -ForegroundColor Red
+          Write-Host "❌ Swift not found after cache restore and fallback setup" -ForegroundColor Red
           exit 1
         }
     
