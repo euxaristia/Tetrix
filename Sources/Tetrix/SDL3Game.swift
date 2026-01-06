@@ -4,6 +4,23 @@ import Glibc
 #endif
 import CSDL3
 
+// High-performance timing for game loop
+#if os(Linux)
+private func getCurrentTime() -> TimeInterval {
+    var ts = timespec()
+    clock_gettime(CLOCK_MONOTONIC, &ts)
+    return TimeInterval(ts.tv_sec) + TimeInterval(ts.tv_nsec) / 1_000_000_000.0
+}
+#elseif os(macOS)
+private func getCurrentTime() -> TimeInterval {
+    return CFAbsoluteTimeGetCurrent()
+}
+#else
+private func getCurrentTime() -> TimeInterval {
+    return Date().timeIntervalSince1970
+}
+#endif
+
 class SDL3Game {
     // Swift-native window/renderer (Windows, macOS) or SDL3 fallback (Linux)
     #if os(Linux)
@@ -24,17 +41,17 @@ class SDL3Game {
     private var isFullscreen = false
     private var textRenderer: SwiftTextRenderer?  // Swift-native text renderer (replaces TTF)
     private var dPadDownHeld = false
-    private var dPadDownRepeatTimer: Date = Date()
+    private var dPadDownRepeatTimer: TimeInterval = 0
     private let dPadDownRepeatInterval: TimeInterval = 0.05 // Repeat interval for soft drop
     private var dPadLeftHeld = false
-    private var dPadLeftRepeatTimer: Date = Date()
+    private var dPadLeftRepeatTimer: TimeInterval = 0
     private var dPadRightHeld = false
-    private var dPadRightRepeatTimer: Date = Date()
-    private let dPadHorizontalRepeatInterval: TimeInterval = 0.1 // Repeat interval for left/right movement
+    private var dPadRightRepeatTimer: TimeInterval = 0
+    private let dPadHorizontalRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for left/right movement (was 0.1)
     private var downKeyHeld = false
-    private var downKeyRepeatTimer: Date = Date()
+    private var downKeyRepeatTimer: TimeInterval = 0
     private let downKeyRepeatInterval: TimeInterval = 0.03 // Faster repeat interval for keyboard soft drop
-    private var lastDropTime: Date = Date() // Track automatic drop timing, reset when piece locks
+    private var lastDropTime: TimeInterval = 0 // Track automatic drop timing, reset when piece locks
     private var music: TetrisMusic?
     private var musicEnabled = true
     private var highScore: Int = 0
@@ -340,27 +357,27 @@ class SDL3Game {
     }
     
     func run() {
-        lastDropTime = Date() // Initialize drop timer
-        var lastFrameTime = Date()
+        let startTime = getCurrentTime()
+        lastDropTime = startTime // Initialize drop timer
+        var lastFrameTime = startTime
         let targetFPS = 60.0
         let frameTime = 1.0 / targetFPS
         
         // Simple, fast game loop - direct access, no threading overhead
         while running {
-            let now = Date()
+            let now = getCurrentTime()
             
             // Process ALL pending events immediately for responsive window controls
             handleEvents()
-            handleEvents() // Process twice to catch events that arrived during first pass
             
             // Handle held D-pad down for soft drop
-            handleDPadDownRepeat()
+            handleDPadDownRepeat(now: now)
             
             // Handle held D-pad left/right for continuous movement
-            handleDPadHorizontalRepeat()
+            handleDPadHorizontalRepeat(now: now)
             
             // Handle held down key for soft drop
-            handleDownKeyRepeat()
+            handleDownKeyRepeat(now: now)
             
             // Show cursor when paused, even if controller is in use
             if engine.gameState == .paused {
@@ -377,20 +394,18 @@ class SDL3Game {
             
             // Update game (drop piece based on level)
             let dropInterval = getDropInterval()
-            if now.timeIntervalSince(lastDropTime) >= dropInterval {
+            if now - lastDropTime >= dropInterval {
                 engine.update()
                 lastDropTime = now
             }
             
             // Render at target FPS
-            if now.timeIntervalSince(lastFrameTime) >= frameTime {
+            if now - lastFrameTime >= frameTime {
                 render()
                 lastFrameTime = now
             } else {
-                // Minimal sleep - just enough to yield CPU, but short enough to keep window responsive
-                PlatformHelper.sleep(milliseconds: 1)
-                
-                // After sleep, immediately process events again to catch any window events
+                // No sleep - busy wait for maximum responsiveness
+                // Process events while waiting for next frame
                 handleEvents()
             }
         }
@@ -465,14 +480,14 @@ class SDL3Game {
             // Start holding down key for continuous movement
             if !downKeyHeld {
                 downKeyHeld = true
-                downKeyRepeatTimer = Date()
+                downKeyRepeatTimer = getCurrentTime()
                 // Immediate movement on first press
                 let couldMove = engine.moveDown()
                 if !couldMove {
                     // Reset repeat timer but keep key held so it continues working for next piece
-                    downKeyRepeatTimer = Date()
+                    downKeyRepeatTimer = getCurrentTime()
                     let dropInterval = getDropInterval()
-                    lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+                    lastDropTime = getCurrentTime() - dropInterval * 0.5 // Wait 50% of normal interval
                 }
             }
         case .w, .up:
@@ -514,27 +529,28 @@ class SDL3Game {
         // SDL_GamepadButton enum values in SDL3
         // A=0, B=1, X=2, Y=3, BACK=4, START=6
         // DPAD_UP=11, DPAD_DOWN=12, DPAD_LEFT=13, DPAD_RIGHT=14
+        let now = getCurrentTime()
         switch button {
         case 11: // SDL_GAMEPAD_BUTTON_DPAD_UP
             engine.rotate()
         case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
             dPadLeftHeld = true
-            dPadLeftRepeatTimer = Date()
+            dPadLeftRepeatTimer = now
             engine.moveLeft() // Immediate action
         case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
             dPadRightHeld = true
-            dPadRightRepeatTimer = Date()
+            dPadRightRepeatTimer = now
             engine.moveRight() // Immediate action
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = true
-            dPadDownRepeatTimer = Date()
+            dPadDownRepeatTimer = now
             let couldMove = engine.moveDown() // Immediate action
             // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
             // Keep key held but reset timer so next piece waits a bit before starting to drop
             if !couldMove {
-                dPadDownRepeatTimer = Date() // Reset repeat timer, but keep key held
+                dPadDownRepeatTimer = now // Reset repeat timer, but keep key held
                 let dropInterval = getDropInterval()
-                lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+                lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
             }
         case 0: // SDL_GAMEPAD_BUTTON_A (X button on DualSense)
             engine.rotate()
@@ -556,62 +572,58 @@ class SDL3Game {
         }
     }
     
-    private func handleDPadDownRepeat() {
+    private func handleDPadDownRepeat(now: TimeInterval) {
         guard dPadDownHeld else { return }
         
-        let now = Date()
-        let timeSinceLastAction = now.timeIntervalSince(dPadDownRepeatTimer)
+        let timeSinceLastAction = now - dPadDownRepeatTimer
         
         if timeSinceLastAction >= dPadDownRepeatInterval {
             let couldMove = engine.moveDown()
-            dPadDownRepeatTimer = Date()
+            dPadDownRepeatTimer = now
             // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
             // Keep key held but reset timer so next piece waits a bit before starting to drop
             if !couldMove {
-                dPadDownRepeatTimer = Date() // Reset repeat timer, but keep key held
+                dPadDownRepeatTimer = now // Reset repeat timer, but keep key held
                 let dropInterval = getDropInterval()
-                lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+                lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
             }
         }
     }
     
-    private func handleDPadHorizontalRepeat() {
-        let now = Date()
-        
+    private func handleDPadHorizontalRepeat(now: TimeInterval) {
         // Handle D-pad left repeat
         if dPadLeftHeld {
-            let timeSinceLastAction = now.timeIntervalSince(dPadLeftRepeatTimer)
+            let timeSinceLastAction = now - dPadLeftRepeatTimer
             if timeSinceLastAction >= dPadHorizontalRepeatInterval {
                 engine.moveLeft()
-                dPadLeftRepeatTimer = Date()
+                dPadLeftRepeatTimer = now
             }
         }
         
         // Handle D-pad right repeat
         if dPadRightHeld {
-            let timeSinceLastAction = now.timeIntervalSince(dPadRightRepeatTimer)
+            let timeSinceLastAction = now - dPadRightRepeatTimer
             if timeSinceLastAction >= dPadHorizontalRepeatInterval {
                 engine.moveRight()
-                dPadRightRepeatTimer = Date()
+                dPadRightRepeatTimer = now
             }
         }
     }
     
-    private func handleDownKeyRepeat() {
+    private func handleDownKeyRepeat(now: TimeInterval) {
         guard downKeyHeld else { return }
         
-        let now = Date()
-        let timeSinceLastAction = now.timeIntervalSince(downKeyRepeatTimer)
+        let timeSinceLastAction = now - downKeyRepeatTimer
         
         if timeSinceLastAction >= downKeyRepeatInterval {
             let couldMove = engine.moveDown()
-            downKeyRepeatTimer = Date()
+            downKeyRepeatTimer = now
             // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
             // Keep key held but reset timer so next piece waits a bit before starting to drop
             if !couldMove {
-                downKeyRepeatTimer = Date() // Reset repeat timer, but keep key held
+                downKeyRepeatTimer = now // Reset repeat timer, but keep key held
                 let dropInterval = getDropInterval()
-                lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+                lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
             }
         }
     }
@@ -699,27 +711,28 @@ class SDL3Game {
         // SDL_GamepadButton enum values in SDL3
         // A=0, B=1, X=2, Y=3, BACK=4, START=6
         // DPAD_UP=11, DPAD_DOWN=12, DPAD_LEFT=13, DPAD_RIGHT=14
+        let now = getCurrentTime()
         switch button {
         case 11: // SDL_GAMEPAD_BUTTON_DPAD_UP
             engine.rotate()
         case 13: // SDL_GAMEPAD_BUTTON_DPAD_LEFT
             dPadLeftHeld = true
-            dPadLeftRepeatTimer = Date()
+            dPadLeftRepeatTimer = now
             engine.moveLeft() // Immediate action
         case 14: // SDL_GAMEPAD_BUTTON_DPAD_RIGHT
             dPadRightHeld = true
-            dPadRightRepeatTimer = Date()
+            dPadRightRepeatTimer = now
             engine.moveRight() // Immediate action
         case 12: // SDL_GAMEPAD_BUTTON_DPAD_DOWN
             dPadDownHeld = true
-            dPadDownRepeatTimer = Date()
+            dPadDownRepeatTimer = now
             let couldMove = engine.moveDown() // Immediate action
             // If piece locked (couldn't move), reset repeat timer to prevent momentum carryover
             // Keep key held but reset timer so next piece waits a bit before starting to drop
             if !couldMove {
-                dPadDownRepeatTimer = Date() // Reset repeat timer, but keep key held
+                dPadDownRepeatTimer = now // Reset repeat timer, but keep key held
                 let dropInterval = getDropInterval()
-                lastDropTime = Date().addingTimeInterval(-dropInterval * 0.5) // Wait 50% of normal interval
+                lastDropTime = now - dropInterval * 0.5 // Wait 50% of normal interval
             }
         case 0: // SDL_GAMEPAD_BUTTON_A (X button on DualSense)
             engine.rotate()
@@ -787,6 +800,7 @@ class SDL3Game {
         var fadeProgress: Double = 0.0
         
         if let startTime = engine.lineClearStartTime, !linesToClear.isEmpty {
+            // Use Date() for animation timing - not in critical input path
             let elapsed = Date().timeIntervalSince(startTime)
             // Flash phase (0 to lineClearFlashDuration)
             // Use constants from engine for animation timing
