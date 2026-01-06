@@ -305,25 +305,193 @@ jobs:
           exit 1
         }
         
-        # With --static-swift-stdlib, the executable should be self-contained
-        # No need to bundle DLLs - just rename for clarity and upload
+        # Check for required DLLs - even with --static-swift-stdlib, some runtime DLLs may be needed
+        Write-Host "Checking executable dependencies..." -ForegroundColor Cyan
+        
+        # Use dumpbin (from Visual Studio) to check actual DLL dependencies
+        $dumpbinPath = $null
+        $vsPath = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe"
+        $resolved = Resolve-Path $vsPath -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($resolved -and (Test-Path $resolved)) {
+          $dumpbinPath = $resolved.Path
+        } else {
+          # Try Community edition
+          $vsPath = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe"
+          $resolved = Resolve-Path $vsPath -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($resolved -and (Test-Path $resolved)) {
+            $dumpbinPath = $resolved.Path
+          }
+        }
+        
+        $requiredDllNames = @()
+        if ($dumpbinPath) {
+          Write-Host "Analyzing DLL dependencies with dumpbin..." -ForegroundColor Cyan
+          $output = & $dumpbinPath /DEPENDENTS $exePath 2>&1
+          foreach ($line in $output) {
+            $lineStr = $line.ToString().Trim()
+            if ($lineStr -match "^\s+(swift.*\.dll)$") {
+              $dllName = $matches[1]
+              if ($requiredDllNames -notcontains $dllName) {
+                $requiredDllNames += $dllName
+                Write-Host "  Found dependency: $dllName" -ForegroundColor Yellow
+              }
+            }
+          }
+        } else {
+          Write-Host "dumpbin not found, will check common Swift runtime DLLs..." -ForegroundColor Yellow
+        }
+        
+        # Try to find Swift runtime DLLs
+        $swiftRuntimePath = $null
+        # Try SwiftyLab setup-swift location first (CI)
+        # SwiftyLab installs to RUNNER_TEMP/swift-<version> or similar
+        $swiftyLabPaths = @(
+          "$env:RUNNER_TEMP\swift",
+          "$env:RUNNER_TEMP\swift-*",
+          "$env:HOME\.swift",
+          "$env:ProgramFiles\Swift"
+        )
+        foreach ($basePath in $swiftyLabPaths) {
+          $resolved = Resolve-Path $basePath -ErrorAction SilentlyContinue
+          if ($resolved) {
+            foreach ($path in $resolved) {
+              if (Test-Path $path) {
+                # Look for toolchain directories
+                $toolchains = Get-ChildItem -Path $path -Filter "*toolchain*" -Directory -ErrorAction SilentlyContinue
+                if (-not $toolchains) {
+                  # Maybe Swift is installed directly here
+                  $runtimePath = Join-Path $path "usr\bin\runtime"
+                  if (Test-Path $runtimePath) {
+                    $swiftRuntimePath = $runtimePath
+                    Write-Host "Found Swift runtime at: $swiftRuntimePath" -ForegroundColor Cyan
+                    break
+                  }
+                } else {
+                  foreach ($toolchain in $toolchains) {
+                    $runtimePath = Join-Path $toolchain.FullName "usr\bin\runtime"
+                    if (Test-Path $runtimePath) {
+                      $swiftRuntimePath = $runtimePath
+                      Write-Host "Found Swift runtime at: $swiftRuntimePath (SwiftyLab)" -ForegroundColor Cyan
+                      break
+                    }
+                  }
+                  if ($swiftRuntimePath) { break }
+                }
+              }
+            }
+            if ($swiftRuntimePath) { break }
+          }
+        }
+        
+        # Also check Swift toolchain from PATH
+        if (-not $swiftRuntimePath) {
+          $swiftPath = (Get-Command swift -ErrorAction SilentlyContinue).Source
+          if ($swiftPath) {
+            $swiftDir = Split-Path (Split-Path $swiftPath) -Parent
+            $runtimePath = Join-Path $swiftDir "runtime"
+            if (Test-Path $runtimePath) {
+              $swiftRuntimePath = $runtimePath
+              Write-Host "Found Swift runtime at: $swiftRuntimePath (from PATH)" -ForegroundColor Cyan
+            }
+          }
+        }
+        
+        # Fallback to other common locations
+        if (-not $swiftRuntimePath) {
+          $swiftToolchainPath = $env:SWIFT_HOME
+          if (-not $swiftToolchainPath) {
+            # Try to find Swift toolchain in common locations
+            $possiblePaths = @(
+              "$env:ProgramFiles\Swift",
+              "$env:ProgramFiles(x86)\Swift",
+              "$env:LOCALAPPDATA\Programs\Swift"
+            )
+            foreach ($path in $possiblePaths) {
+              if (Test-Path $path) {
+                $toolchains = Get-ChildItem -Path $path -Filter "Toolchains" -Directory -ErrorAction SilentlyContinue
+                if ($toolchains) {
+                  $toolchain = Get-ChildItem -Path $toolchains[0].FullName -Directory | Select-Object -First 1
+                  if ($toolchain) {
+                    $runtimePath = Join-Path $toolchain.FullName "usr\bin\runtime"
+                    if (Test-Path $runtimePath) {
+                      $swiftRuntimePath = $runtimePath
+                      Write-Host "Found Swift runtime at: $swiftRuntimePath" -ForegroundColor Cyan
+                      break
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            $runtimePath = Join-Path $swiftToolchainPath "usr\bin\runtime"
+            if (Test-Path $runtimePath) {
+              $swiftRuntimePath = $runtimePath
+              Write-Host "Found Swift runtime at: $swiftRuntimePath" -ForegroundColor Cyan
+            }
+          }
+        }
+        
+        # Copy required DLLs if found
+        $neededDlls = @()
+        if ($requiredDllNames.Count -gt 0 -and $swiftRuntimePath) {
+          Write-Host "`nCopying required Swift runtime DLLs..." -ForegroundColor Yellow
+          foreach ($dllName in $requiredDllNames) {
+            $dllPath = Join-Path $swiftRuntimePath $dllName
+            if (Test-Path $dllPath) {
+              $neededDlls += $dllPath
+              Write-Host "  Found: $dllName" -ForegroundColor Green
+            } else {
+              Write-Host "  Warning: Required DLL not found: $dllName" -ForegroundColor Red
+            }
+          }
+        } elseif ($swiftRuntimePath) {
+          # Fallback: Copy common Swift runtime DLLs if dumpbin didn't work
+          Write-Host "Copying common Swift runtime DLLs (fallback)..." -ForegroundColor Yellow
+          $commonDlls = @("swiftCore.dll", "swiftFoundation.dll", "swiftWinSDK.dll", "swiftCRT.dll")
+          foreach ($dll in $commonDlls) {
+            $dllPath = Join-Path $swiftRuntimePath $dll
+            if (Test-Path $dllPath) {
+              $neededDlls += $dllPath
+              Write-Host "  Found: $dll" -ForegroundColor Green
+            }
+          }
+        } else {
+          Write-Host "Warning: Could not locate Swift runtime path" -ForegroundColor Yellow
+          Write-Host "  The executable may crash if Swift runtime DLLs are required" -ForegroundColor Yellow
+        }
+        
+        # Rename executable for release
         $releaseExe = "TetrixWindows.exe"
         Copy-Item $exePath $releaseExe
+        
+        # Copy required DLLs if found
+        if ($neededDlls.Count -gt 0) {
+          Write-Host "`nCopying required Swift runtime DLLs..." -ForegroundColor Yellow
+          foreach ($dll in $neededDlls) {
+            Copy-Item $dll -Destination "." -Force
+            Write-Host "  Copied: $(Split-Path $dll -Leaf)" -ForegroundColor Green
+          }
+        }
         
         $fileInfo = Get-Item $releaseExe
         Write-Host "`nPortable Windows release executable created:" -ForegroundColor Green
         Write-Host "  File: $releaseExe" -ForegroundColor Cyan
         Write-Host "  Size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
-        Write-Host "  Status: Statically linked (self-contained, no DLLs required)" -ForegroundColor Green
-        Write-Host "`nNote: This executable uses --static-swift-stdlib and should be portable" -ForegroundColor Yellow
-        Write-Host "  System DLLs (like KERNEL32.DLL) are provided by Windows and don't need bundling" -ForegroundColor Yellow
+        if ($neededDlls.Count -gt 0) {
+          Write-Host "  Status: Includes $($neededDlls.Count) Swift runtime DLL(s)" -ForegroundColor Yellow
+        } else {
+          Write-Host "  Status: Statically linked (self-contained, no DLLs required)" -ForegroundColor Green
+        }
+        Write-Host "`nNote: System DLLs (like KERNEL32.DLL) are provided by Windows" -ForegroundColor Yellow
     
     - name: Upload Binary Artifact
       if: github.event_name == 'push'
       uses: actions/upload-artifact@v4
       with:
         name: tetrix-windows
-        path: TetrixWindows.exe
+        path: |
+          TetrixWindows.exe
+          *.dll
         retention-days: 1
 
   release:
@@ -371,5 +539,6 @@ jobs:
           artifacts/linux/Tetrix
           artifacts/macos/TetrixDarwin
           artifacts/windows/TetrixWindows.exe
+          artifacts/windows/*.dll
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
