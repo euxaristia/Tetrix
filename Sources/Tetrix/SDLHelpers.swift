@@ -203,7 +203,11 @@ struct SDLWindowHelper {
     /// Set render logical presentation (uses Swift-native mode enum)
     static func setLogicalPresentation(renderer: OpaquePointer?, width: Int32, height: Int32, mode: LogicalPresentationMode) -> Bool {
         let rawValue = mode.toSDL()
+        #if os(Windows)
         return SDL_SetRenderLogicalPresentation(renderer, width, height, CSDL3.SDL_RendererLogicalPresentation(rawValue: Int32(rawValue)))
+        #else
+        return SDL_SetRenderLogicalPresentation(renderer, width, height, CSDL3.SDL_RendererLogicalPresentation(rawValue: UInt32(rawValue)))
+        #endif
     }
     
     /// Set render logical presentation (legacy C type version)

@@ -2,10 +2,8 @@ import Foundation
 
 #if os(Windows)
 import WinSDK
-#elseif os(macOS)
-import Cocoa
-import AppKit
-import CoreText
+    #elseif os(macOS)
+// macOS uses SDL3 for rendering, no special imports needed
 #elseif os(Linux)
 import Glibc
 import CSDL3
@@ -71,61 +69,57 @@ class SwiftTextRenderer {
     }
     
     #elseif os(macOS)
-    #elseif os(macOS)
-    private var font: NSFont
-    private var view: NSView?
+    // macOS now uses SDL3 for rendering, so use the same bitmap font approach as Linux/Windows
+    private var renderer: RendererProtocol?
     
     init?() {
-        // Create system font at 20pt
-        guard let font = NSFont(name: "Arial Bold", size: 20) ??
-                        NSFont.systemFont(ofSize: 20) as NSFont? else {
-            return nil
-        }
-        self.font = font
+        // Simple initialization - renderer will be set later
     }
     
-    func setView(_ view: NSView) {
-        self.view = view
+    func setRenderer(_ renderer: RendererProtocol) {
+        self.renderer = renderer
     }
     
     func drawText(_ text: String, at x: Int32, y: Int32, color: (r: UInt8, g: UInt8, b: UInt8)) {
-        // On macOS, we need to draw directly to the view
-        guard let view = view else { return }
+        guard let renderer = renderer else { return }
         
-        // Lock focus on the view to get a drawing context
-        view.lockFocus()
-        defer { view.unlockFocus() }
+        // Simple bitmap font renderer - draw characters using rectangles
+        // Character size: 8x12 pixels, with 1 pixel spacing
+        let charWidth: Int32 = 8
+        let charHeight: Int32 = 12
+        let spacing: Int32 = 1
         
-        let nsColor = NSColor(
-            red: CGFloat(color.r) / 255.0,
-            green: CGFloat(color.g) / 255.0,
-            blue: CGFloat(color.b) / 255.0,
-            alpha: 1.0
-        )
+        var currentX = x
+        for char in text {
+            drawChar(char, at: currentX, y: y, color: color, renderer: renderer, charWidth: charWidth, charHeight: charHeight)
+            currentX += charWidth + spacing
+        }
+    }
+    
+    private func drawChar(_ char: Character, at x: Int32, y: Int32, color: (r: UInt8, g: UInt8, b: UInt8), renderer: RendererProtocol, charWidth: Int32, charHeight: Int32) {
+        // Simple 8x12 bitmap font for basic ASCII characters
+        let pattern = BitmapFont.getPattern(char)
         
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: nsColor
-        ]
-        
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-        
-        // Draw at the specified position
-        // Note: macOS coordinate system has origin at bottom-left, but NSView drawing
-        // typically uses top-left origin, so we may need to adjust
-        let viewHeight = view.bounds.height
-        let adjustedY = viewHeight - CGFloat(y) - font.pointSize
-        attributedString.draw(at: CGPoint(x: CGFloat(x), y: adjustedY))
+        let pixelSize: Int32 = 1
+        for row in 0..<Int(charHeight) {
+            for col in 0..<Int(charWidth) {
+                if row < pattern.count && col < pattern[row].count && pattern[row][col] {
+                    let pixelX = x + Int32(col) * pixelSize
+                    let pixelY = y + Int32(row) * pixelSize
+                    let rect = Rect(x: Float(pixelX), y: Float(pixelY), width: Float(pixelSize), height: Float(pixelSize))
+                    renderer.setDrawColor(r: color.r, g: color.g, b: color.b, a: 255)
+                    renderer.fillRect(rect)
+                }
+            }
+        }
     }
     
     func measureText(_ text: String) -> (width: Int32, height: Int32) {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font
-        ]
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-        let line = CTLineCreateWithAttributedString(attributedString)
-        let bounds = CTLineGetBoundsWithOptions(line, [])
-        return (Int32(bounds.width), Int32(bounds.height))
+        let charWidth: Int32 = 8
+        let charHeight: Int32 = 12
+        let spacing: Int32 = 1
+        let width = Int32(text.count) * (charWidth + spacing) - spacing
+        return (width, charHeight)
     }
     
     #elseif os(Linux)
