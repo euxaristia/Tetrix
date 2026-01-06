@@ -9,18 +9,10 @@
             "args": [],
             "cwd": "${workspaceFolder:Tetrix}",
             "preLaunchTask": "swift: Build Debug Tetrix",
-            "env": {
-                "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:${env:LD_LIBRARY_PATH}"
-            },
             "sourceMap": {
                 "/proc/self/cwd": "${workspaceFolder}",
                 "${workspaceFolder}": "${workspaceFolder}"
-            },
-            "initCommands": [
-                "settings set target.env-vars LD_LIBRARY_PATH=/usr/lib/swift/lib/swift/linux",
-                "settings set symbols.enable-external-lookup true",
-                "settings set symbols.load-on-demand false"
-            ]
+            }
         },
         {
             "type": "lldb",
@@ -51,18 +43,10 @@
             "args": [],
             "cwd": "${workspaceFolder:Tetrix}",
             "preLaunchTask": "swift: Build Release Tetrix",
-            "env": {
-                "LD_LIBRARY_PATH": "/usr/lib/swift/lib/swift/linux:${env:LD_LIBRARY_PATH}"
-            },
             "sourceMap": {
                 "/proc/self/cwd": "${workspaceFolder}",
                 "${workspaceFolder}": "${workspaceFolder}"
-            },
-            "initCommands": [
-                "settings set target.env-vars LD_LIBRARY_PATH=/usr/lib/swift/lib/swift/linux",
-                "settings set symbols.enable-external-lookup true",
-                "settings set symbols.load-on-demand false"
-            ]
+            }
         }
     ]
 }
