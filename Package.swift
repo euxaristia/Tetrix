@@ -32,30 +32,9 @@ let package = Package(
                 .linkedLibrary("SDL3")
             ]
         ),
-        .target(
-            name: "CPulseAudio",
-            path: "Sources/CPulseAudio",
-            sources: [
-                "PulseAudioWrapper.c"
-            ],
-            publicHeadersPath: "include",
-            // C module with PulseAudio wrapper for Linux and WASAPI wrapper for Windows
-            cSettings: [
-                // Linux: Add PulseAudio compiler flags
-                .unsafeFlags(["-D_REENTRANT"], .when(platforms: [.linux]))
-            ],
-            linkerSettings: [
-                // Linux: Link PulseAudio libraries
-                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux])),
-                // Windows: Link WASAPI libraries
-                .unsafeFlags(["-Xlinker", "avrt.lib"], .when(platforms: [.windows])),
-                .unsafeFlags(["-Xlinker", "ole32.lib"], .when(platforms: [.windows])),
-                .unsafeFlags(["-Xlinker", "uuid.lib"], .when(platforms: [.windows]))
-            ]
-        ),
         .executableTarget(
             name: "Tetrix",
-            dependencies: ["CSDL3", "Tenebris", "CPulseAudio"],
+            dependencies: ["CSDL3", "Tenebris"],
             path: "Sources/Tetrix",
             exclude: [
                 // No exclusions needed - all Swift files are in Sources/Tetrix
@@ -78,6 +57,8 @@ let package = Package(
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
                 .linkedLibrary("SDL3"),
+                // Linux: Link PulseAudio libraries directly (no C wrapper needed)
+                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux])),
                 // Static linking and optimization flags for Windows release builds
                 // Note: Static C runtime linking may require specific MSVC setup
                 // These flags optimize the binary and remove debug info for obfuscation
@@ -91,7 +72,7 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS"], .when(platforms: [.windows])),
                 .unsafeFlags(["-Xlinker", "/ENTRY:mainCRTStartup"], .when(platforms: [.windows])),
                 // Note: SDL3_ttf has been removed - using Swift-native text rendering instead
-                // Note: PulseAudio is linked by CPulseAudio target
+                // Note: PulseAudio is now directly linked (pure Swift implementation, no C wrapper)
                 // Note: Swift runtime will still be dynamically linked (standard for Swift on Windows)
             ]
         )
