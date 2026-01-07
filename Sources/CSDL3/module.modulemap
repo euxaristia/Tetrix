@@ -1,7 +1,0 @@
-module CSDL3 {
-    // Direct SDL3 imports - no C wrapper needed
-    // All SDL3 headers have been rewritten in pure Swift (copyright-free replacements)
-    header "include/SDL3/SDL.h"
-    link "SDL3"
-    export *
-}
