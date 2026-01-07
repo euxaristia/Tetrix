@@ -9,6 +9,7 @@ class TetrisGameRenderer: GameRenderer {
     private var gamepadExists: Bool = false
     private var musicIsPlaying: Bool = false
     private var currentFPS: Double = 0.0
+    private var rendererBackend: String = "unknown"
     private let settingsManager = SettingsManager.shared
     
     private let cellSize: Int32 = 30
@@ -27,11 +28,12 @@ class TetrisGameRenderer: GameRenderer {
         highScore = settings.highScore
     }
     
-    func updateUIState(usingController: Bool, gamepadExists: Bool, musicIsPlaying: Bool, currentFPS: Double) {
+    func updateUIState(usingController: Bool, gamepadExists: Bool, musicIsPlaying: Bool, currentFPS: Double, rendererBackend: String) {
         self.usingController = usingController
         self.gamepadExists = gamepadExists
         self.musicIsPlaying = musicIsPlaying
         self.currentFPS = currentFPS
+        self.rendererBackend = rendererBackend
     }
     
     func updateHighScore(_ score: Int) {
@@ -183,6 +185,11 @@ class TetrisGameRenderer: GameRenderer {
         let fpsText = String(format: "FPS: %.1f", currentFPS)
         let fpsColor: (r: UInt8, g: UInt8, b: UInt8) = currentFPS >= 170.0 ? (r: 100, g: 255, b: 100) : (r: 255, g: 200, b: 100)
         drawText(textRenderer: textRenderer, x: panelX, y: panelY + 120, text: fpsText, r: fpsColor.r, g: fpsColor.g, b: fpsColor.b)
+
+        // Renderer backend indicator
+        let backendDisplay = formatRendererBackend(rendererBackend)
+        let backendColor: (r: UInt8, g: UInt8, b: UInt8) = backendDisplay.lowercased().contains("directx") ? (r: 255, g: 100, b: 100) : (r: 160, g: 200, b: 255)
+        drawText(textRenderer: textRenderer, x: panelX, y: panelY + 140, text: "Renderer: \(backendDisplay)", r: backendColor.r, g: backendColor.g, b: backendColor.b)
         
         // Next piece
         drawText(textRenderer: textRenderer, x: panelX, y: panelY + 160, text: "Next:", r: 255, g: 255, b: 255)
@@ -327,6 +334,19 @@ class TetrisGameRenderer: GameRenderer {
         case "orange": return (255, 165, 0)
         default: return (128, 128, 128)
         }
+    }
+
+    private func formatRendererBackend(_ raw: String) -> String {
+        let v = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if v.isEmpty || v == "unknown" { return "Unknown" }
+        if v.contains("vulkan") { return "Vulkan" }
+        if v.contains("opengl") { return "OpenGL" }
+        if v.contains("metal") { return "Metal" }
+        if v.contains("software") { return "Software" }
+        if v.contains("direct3d12") { return "DirectX 12" }
+        if v.contains("direct3d11") { return "DirectX 11" }
+        if v.contains("direct3d") { return "DirectX" }
+        return raw
     }
     
     private func drawText(textRenderer: SwiftTextRenderer?, x: Int32, y: Int32, text: String, r: UInt8, g: UInt8, b: UInt8) {
