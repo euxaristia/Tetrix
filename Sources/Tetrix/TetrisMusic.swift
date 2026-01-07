@@ -1,195 +1,13 @@
 import Foundation
+import SwiftSDL
+import CSDL3
 #if os(Linux)
 import Glibc
 #endif
-import CSDL3
 
 // MARK: - Swift-Native Audio Types (replaces SDL audio C types)
 
-/// Swift-native audio specification (replaces SDL_AudioSpec)
-struct AudioSpec {
-    var frequency: Int32
-    var format: UInt32
-    var channels: UInt8
-    
-    init(frequency: Int32, format: UInt32, channels: UInt8) {
-        self.frequency = frequency
-        self.format = format
-        self.channels = channels
-    }
-    
-    /// Convert to SDL_AudioSpec for C interop
-    func toSDL() -> SDL_AudioSpec {
-        var sdlSpec = SDL_AudioSpec()
-        sdlSpec.freq = frequency
-        #if os(Windows)
-        sdlSpec.format = SDL_AudioFormat(rawValue: Int32(format))
-        #else
-        sdlSpec.format = SDL_AudioFormat(rawValue: UInt32(format))
-        #endif
-        sdlSpec.channels = Int32(channels)
-        return sdlSpec
-    }
-}
-
-// MARK: - Swift-Native Audio API (replaces SDL audio C API)
-
-/// Swift-native audio stream manager with callback-based auto-playback
-/// Uses SDL callbacks to automatically trigger playback without needing explicit resume
-class AudioStream {
-    private var sdlStream: OpaquePointer?
-    private let originalDeviceID: UInt32
-    private var isPlaying: Bool = false
-    
-    // Audio format constants
-    private let sampleRate: Int32
-    private let format: UInt32
-    private let channels: UInt8
-    
-    // Callback system
-    private var userdata: Unmanaged<AudioStream>?
-    private var dataProvider: ((UnsafeMutablePointer<Int16>?, Int32) -> Int32)?
-    
-    /// Initialize with optional callback for auto-playback
-    /// If callback is provided, SDL will automatically call it when audio is needed,
-    /// which should trigger auto-playback without needing explicit resume
-    init?(device: UInt32, spec: AudioSpec, dataProvider: @escaping (UnsafeMutablePointer<Int16>?, Int32) -> Int32) {
-        // Initialize all stored properties first
-        originalDeviceID = device
-        sampleRate = spec.frequency
-        format = spec.format
-        channels = spec.channels
-        self.dataProvider = dataProvider
-        
-        var sdlSpec = spec.toSDL()
-        
-        // Create a retained reference to self for the callback (after all properties initialized)
-        let retained = Unmanaged.passRetained(self)
-        self.userdata = retained
-        let userdataPtr = UnsafeMutableRawPointer(retained.toOpaque())
-        
-        // Create C callback that bridges to Swift
-        // SDL calls this when it needs more audio data
-        // additional_amount is in BYTES, not samples
-        let callback: SDL_AudioStreamCallback = { userdata, stream, additional_amount, total_amount in
-            guard let userdata = userdata else { return }
-            let audioStream = Unmanaged<AudioStream>.fromOpaque(userdata).takeUnretainedValue()
-            
-            // Call the Swift data provider
-            if let provider = audioStream.dataProvider {
-                // additional_amount is in bytes, convert to samples (16-bit = 2 bytes per sample)
-                let samplesNeeded = Int32(additional_amount / 2)
-                
-                if samplesNeeded > 0 {
-                    // Allocate buffer for audio data (in samples)
-                    let buffer = UnsafeMutablePointer<Int16>.allocate(capacity: Int(samplesNeeded))
-                    defer { buffer.deallocate() }
-                    
-                    // Get data from provider (provider expects sample count)
-                    let samplesGenerated = provider(buffer, samplesNeeded)
-                    
-                    if samplesGenerated > 0 {
-                        // Queue the generated audio data (convert samples to bytes)
-                        let bytesToQueue = samplesGenerated * 2  // 16-bit = 2 bytes per sample
-                        _ = SDL_PutAudioStreamData(stream, buffer, Int32(bytesToQueue))
-                    }
-                }
-            }
-        }
-        
-        // Use SDL's OpenAudioDeviceStream with callback - this should auto-start playback
-            sdlStream = SDL_OpenAudioDeviceStream(device, &sdlSpec, callback, userdataPtr)
-        if sdlStream == nil {
-            retained.release()
-            return nil
-        }
-        
-        // Note: Streams created with callbacks may start paused
-        // We'll need to explicitly resume the device in start()
-        isPlaying = false  // Don't mark as playing until start() is called
-    }
-    
-    /// Resume audio playback - Swift-native implementation
-    /// Use the original device ID to resume the device, since we can't safely get it from the stream
-    func resume() {
-        guard sdlStream != nil else { 
-            print("Warning: Cannot resume - stream is nil")
-            return 
-        }
-        
-        // Don't resume if already playing
-        if isPlaying {
-            print("Already playing, skipping resume")
-            return
-        }
-        
-        // Check if audio subsystem is initialized
-        let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
-        guard SDL_WasInit(audioFlag) != 0 else {
-            print("Warning: Cannot resume audio - audio subsystem not initialized")
-            return
-        }
-        
-        // Try a safer approach: Only resume if we have a valid device ID
-        // and the device ID is not the problematic default value
-        // The default playback device (0xFFFFFFFF) might be causing crashes
-        
-        isPlaying = true
-        
-        // For now, don't call resume - it crashes
-        // The callback should still be called when SDL needs data,
-        // but playback might not start without explicit resume
-        // This is a known limitation - SDL3 audio resume is problematic
-        
-        print("Audio playback enabled (isPlaying = true)")
-        print("  Warning: Music may not play - SDL_ResumeAudioStreamDevice crashes")
-        print("  Callback will provide data, but device may stay paused")
-    }
-    
-    func pause() {
-        // Don't call SDL_PauseAudioStreamDevice - it may crash like SDL_GetAudioStreamDevice
-        // Instead, just set isPlaying to false - the callback will return silence
-        // This is safer and avoids crashes from accessing the stream pointer
-        isPlaying = false
-        print("Music paused (callback will return silence)")
-    }
-    
-    func getQueued() -> Int32 {
-        guard let stream = sdlStream else { return 0 }
-        // SDL_GetAudioStreamQueued might be unsafe - wrap in a safe check
-        // If it crashes, return 0 instead
-        return Int32(SDL_GetAudioStreamQueued(stream))
-    }
-    
-    func putData(_ data: UnsafeRawPointer, _ len: Int32) -> Bool {
-        guard let stream = sdlStream else { return false }
-        return SDL_PutAudioStreamData(stream, data, len)
-    }
-    
-    var playing: Bool {
-        return isPlaying
-    }
-    
-    deinit {
-        // Release the retained reference
-        userdata?.release()
-        
-        if let stream = sdlStream {
-            SDL_DestroyAudioStream(stream)
-        }
-    }
-}
-
-/// SDL audio constants (replaces SDL_* constants)
-enum AudioFormat {
-    static var s16: UInt32 {
-        return UInt32(SDL_AUDIO_S16.rawValue)
-    }
-}
-
-enum AudioDevice {
-    static let defaultPlayback = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK
-}
+// Note: AudioStream and related types are now provided by SwiftSDL
 
 class TetrisMusic {
     // Musical note frequencies (Hz) - just the notes we need for Tetris theme
@@ -217,12 +35,7 @@ class TetrisMusic {
         "E6": 1318.51  // E6 (higher octave)
     ]
     
-    private var audioStream: SwiftAudioStream? = nil
-    #if os(Linux)
-    private var pulseAudioStream: PulseAudioStream? = nil
-    #elseif os(Windows)
-    private var wasapiStream: WASAPIStream? = nil
-    #endif
+    private var audioStream: AudioStream? = nil
     private var sampleRate: Int = 44100
     private var isPlaying = false
     private var samplesGenerated = 0
@@ -264,10 +77,16 @@ class TetrisMusic {
     private var currentNoteIndex = 0
     
     init() {
-        setupAudio()
+        // Don't initialize audio here - wait until SDL is initialized
+        // setupAudio() will be called lazily when music is first started
     }
     
     private func setupAudio() {
+        // Don't reinitialize if already set up
+        if audioStream != nil {
+            return
+        }
+        
         // Check if audio subsystem is initialized
         let audioFlag: UInt32 = 0x00000010  // SDL_INIT_AUDIO
         guard SDL_WasInit(audioFlag) != 0 else {
@@ -275,86 +94,9 @@ class TetrisMusic {
             return
         }
         
-        // Use PulseAudio instead of SDL3 audio to avoid resume crashes
-        #if os(Linux)
-        pulseAudioStream = PulseAudioStream(
+        // Use SwiftSDL's unified AudioStream API (handles platform differences)
+        audioStream = AudioStream(
             sampleRate: Int32(sampleRate),
-            channels: 1
-        ) { [weak self] buffer, requestedSamples in
-            guard let strongSelf = self else {
-                // Return silence if self is deallocated
-                if let buffer = buffer {
-                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
-                }
-                return requestedSamples
-            }
-            
-            // Only generate audio if playing
-            if strongSelf.isPlaying {
-                return strongSelf.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
-            } else {
-                // Return silence if not playing
-                if let buffer = buffer {
-                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
-                }
-                return requestedSamples
-            }
-        }
-        
-        if pulseAudioStream == nil {
-            print("Warning: Failed to create PulseAudio stream")
-            return
-        }
-        
-        print("PulseAudio stream created successfully")
-        print("  Sample rate: \(sampleRate) Hz")
-        print("  Format: 16-bit signed")
-        print("  Channels: Mono")
-        #elseif os(Windows)
-        // Use WASAPI directly on Windows (pure Swift implementation)
-        // Note: WASAPI will use the device's native sample rate (likely 48kHz)
-        // We pass our requested rate but WASAPI will adjust to device format
-        wasapiStream = WASAPIStream(
-            sampleRate: Int32(sampleRate),  // Requested rate, but device may use different
-            channels: 1
-        ) { [weak self] buffer, requestedSamples in
-            guard let strongSelf = self else {
-                // Return silence if self is deallocated
-                if let buffer = buffer {
-                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
-                }
-                return requestedSamples
-            }
-            
-            // Only generate audio if playing
-            if strongSelf.isPlaying {
-                return strongSelf.generateAudioSamples(buffer: buffer, requestedSamples: requestedSamples)
-            } else {
-                // Return silence if not playing
-                if let buffer = buffer {
-                    buffer.initialize(repeating: 0, count: Int(requestedSamples))
-                }
-                return requestedSamples
-            }
-        }
-        
-        if wasapiStream == nil {
-            print("Warning: Failed to create WASAPI stream")
-            return
-        }
-        
-        print("WASAPI stream created successfully")
-        print("  Sample rate: \(sampleRate) Hz")
-        print("  Format: 16-bit signed")
-        print("  Channels: Mono")
-        #else
-        // Use SDL3 audio on macOS and other platforms
-        let deviceID = SwiftAudioStream.getPlaybackDevice()
-        
-        audioStream = SwiftAudioStream(
-            device: deviceID,
-            sampleRate: Int32(sampleRate),
-            format: SwiftAudioFormat.s16,
             channels: 1
         ) { [weak self] buffer, requestedSamples in
             guard let self = self else {
@@ -375,16 +117,14 @@ class TetrisMusic {
         }
         
         if audioStream == nil {
-            let errorString = String.sdlError() ?? "Unknown error"
-            print("Warning: Failed to open audio device: \(errorString)")
+            print("Warning: Failed to create audio stream")
             return
         }
         
-        print("Swift-native audio stream created successfully")
+        print("Audio stream created successfully")
         print("  Sample rate: \(sampleRate) Hz")
         print("  Format: 16-bit signed")
         print("  Channels: Mono")
-        #endif
     }
     
     /// Generate audio samples on demand (called by SDL callback)
@@ -458,34 +198,16 @@ class TetrisMusic {
         
         print("Starting Tetris music...")
         
+        // Initialize audio stream if not already done (lazy initialization after SDL is ready)
+        if audioStream == nil {
+            setupAudio()
+        }
+        
         // Reset state before starting
         currentNoteIndex = 0
         samplesGenerated = 0
         
-        #if os(Linux)
-        // Use PulseAudio on Linux
-        if let pulseStream = pulseAudioStream {
-            // Set isPlaying AFTER successfully starting the stream
-            pulseStream.start()
-            isPlaying = true
-            print("Music started with PulseAudio - background generation active")
-        } else {
-            print("Warning: PulseAudio stream not initialized")
-            isPlaying = false
-        }
-        #elseif os(Windows)
-        // Use WASAPI on Windows
-        if let wasapi = wasapiStream {
-            // Set isPlaying AFTER starting the stream to ensure it's only true if stream actually started
-            wasapi.start()
-            isPlaying = true
-            print("Music started with WASAPI - background generation active, isPlaying=\(isPlaying)")
-        } else {
-            print("Warning: WASAPI stream not initialized")
-            isPlaying = false
-        }
-        #else
-        // Use SDL3 audio on macOS and other platforms
+        // Use SwiftSDL's unified AudioStream API
         guard let stream = audioStream else {
             print("Warning: Cannot start music - audio stream not initialized")
             isPlaying = false
@@ -495,7 +217,6 @@ class TetrisMusic {
         stream.start()
         isPlaying = true
         print("Music started - background generation active")
-        #endif
     }
     
     // Public property to check if music is playing
@@ -510,14 +231,7 @@ class TetrisMusic {
         }
         
         isPlaying = false
-        #if os(Linux)
-        pulseAudioStream?.stop()
-        #elseif os(Windows)
-        // Temporarily using SDL3 audio (WASAPI disabled due to crash)
         audioStream?.stop()
-        #else
-        audioStream?.stop()
-        #endif
         print("Music stopped")
     }
     
@@ -528,13 +242,7 @@ class TetrisMusic {
     }
     
     deinit {
-        // Clean up audio streams
-        #if os(Linux)
-        pulseAudioStream = nil
-        #elseif os(Windows)
-        wasapiStream = nil
-        #else
+        // Clean up audio stream
         audioStream = nil
-        #endif
     }
 }

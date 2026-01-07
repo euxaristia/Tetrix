@@ -9,38 +9,17 @@ let package = Package(
             targets: ["Tetrix"]
         )
     ],
+    dependencies: [
+        .package(path: "../SwiftSDL")
+    ],
     targets: [
         .target(
             name: "Tenebris",
             path: "Sources/Tenebris"
         ),
-        .target(
-            name: "CSDL3",
-            path: "Sources/CSDL3",
-            // C module for SDL3 headers only (no source files)
-            cSettings: [
-                .headerSearchPath("include"),
-                // Only use rewritten headers from Sources/CSDL3/include/SDL3/
-                // No external SDL3 headers are included
-            ],
-            linkerSettings: [
-                // Windows: Link against static libraries (built in CI, renamed to standard names)
-                // Add current directory to library search path first (highest priority)
-                .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
-                // Linux: Add /usr/local/lib for SDL3 built from source
-                .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3"),
-                // Windows: Required system libraries for SDL3
-                .linkedLibrary("ole32", .when(platforms: [.windows])),
-                .linkedLibrary("oleaut32", .when(platforms: [.windows])),
-                .linkedLibrary("imm32", .when(platforms: [.windows])),
-                .linkedLibrary("version", .when(platforms: [.windows])),
-                .linkedLibrary("winmm", .when(platforms: [.windows]))
-            ]
-        ),
         .executableTarget(
             name: "Tetrix",
-            dependencies: ["CSDL3", "Tenebris"],
+            dependencies: [.product(name: "SwiftSDL", package: "SwiftSDL"), "Tenebris"],
             path: "Sources/Tetrix",
             exclude: [
                 // No exclusions needed - all Swift files are in Sources/Tetrix
@@ -56,21 +35,8 @@ let package = Package(
                 .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release)), // Cross-module optimization
             ],
             linkerSettings: [
-                // Windows: Link against static libraries (built in CI, renamed to standard names)
-                // Add current directory to library search path first (highest priority)
-                // This ensures the static SDL3.lib in the project root is found before any DLL import libraries
-                .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
-                // Linux: Add /usr/local/lib for SDL3 built from source
-                .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3"),
-                // Windows: Required system libraries for SDL3
-                .linkedLibrary("ole32", .when(platforms: [.windows])),
-                .linkedLibrary("oleaut32", .when(platforms: [.windows])),
-                .linkedLibrary("imm32", .when(platforms: [.windows])),
-                .linkedLibrary("version", .when(platforms: [.windows])),
-                .linkedLibrary("winmm", .when(platforms: [.windows])),
-                // Linux: Link PulseAudio libraries directly (no C wrapper needed)
-                .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux])),
+                // Note: SDL3 and system libraries are now linked by SwiftSDL
+                // Note: PulseAudio libraries are now linked by SwiftSDL
                 // Static linking and optimization flags for Windows release builds
                 // Note: Static C runtime linking may require specific MSVC setup
                 // These flags optimize the binary and remove debug info for obfuscation

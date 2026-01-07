@@ -2,42 +2,46 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "lldb",
+            "type": "swift",
             "request": "launch",
             "name": "Debug Tetrix",
-            // Windows path: includes architecture subdirectory and .exe extension
-            // Linux/macOS: change to "${workspaceFolder}/.build/debug/Tetrix"
-            "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/debug/Tetrix.exe",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder:Tetrix}",
             "stopOnEntry": false,
             "showDisplayString": false,
-            "initCommands": ["settings set target.process.stop-on-sharedlibrary-events false"],
+            "initCommands": [
+                "settings set target.process.stop-on-sharedlibrary-events false"
+            ],
             "terminal": null,
             "sourceLanguages": [
                 "swift",
                 "c",
                 "cpp"
-            ]
+            ],
+            "target": "Tetrix",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Tetrix"
         },
         {
-            "type": "lldb",
+            "type": "swift",
             "request": "launch",
             "name": "Release Tetrix",
-            // Windows path: includes architecture subdirectory and .exe extension
-            // Linux/macOS: change to "${workspaceFolder}/.build/release/Tetrix"
-            "program": "${workspaceFolder}/.build/x86_64-unknown-windows-msvc/release/Tetrix.exe",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder:Tetrix}",
             "stopOnEntry": false,
             "showDisplayString": false,
-            "initCommands": ["settings set target.process.stop-on-sharedlibrary-events false"],
+            "initCommands": [
+                "settings set target.process.stop-on-sharedlibrary-events false"
+            ],
             "terminal": null,
             "sourceLanguages": [
                 "swift",
                 "c",
                 "cpp"
-            ]
+            ],
+            "target": "Tetrix",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Tetrix"
         }
     ]
 }
