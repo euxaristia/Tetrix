@@ -8,6 +8,7 @@ class TetrisGameRenderer: GameRenderer {
     private var usingController: Bool = false
     private var gamepadExists: Bool = false
     private var musicIsPlaying: Bool = false
+    private var currentFPS: Double = 0.0
     private let settingsManager = SettingsManager.shared
     
     private let cellSize: Int32 = 30
@@ -26,10 +27,11 @@ class TetrisGameRenderer: GameRenderer {
         highScore = settings.highScore
     }
     
-    func updateUIState(usingController: Bool, gamepadExists: Bool, musicIsPlaying: Bool) {
+    func updateUIState(usingController: Bool, gamepadExists: Bool, musicIsPlaying: Bool, currentFPS: Double) {
         self.usingController = usingController
         self.gamepadExists = gamepadExists
         self.musicIsPlaying = musicIsPlaying
+        self.currentFPS = currentFPS
     }
     
     func updateHighScore(_ score: Int) {
@@ -177,14 +179,19 @@ class TetrisGameRenderer: GameRenderer {
         drawText(textRenderer: textRenderer, x: panelX, y: panelY + 60, text: "Lines: \(engine.linesCleared)", r: 255, g: 255, b: 255)
         drawText(textRenderer: textRenderer, x: panelX, y: panelY + 90, text: "Level: \(engine.level)", r: 255, g: 255, b: 255)
         
+        // FPS counter
+        let fpsText = String(format: "FPS: %.1f", currentFPS)
+        let fpsColor: (r: UInt8, g: UInt8, b: UInt8) = currentFPS >= 170.0 ? (r: 100, g: 255, b: 100) : (r: 255, g: 200, b: 100)
+        drawText(textRenderer: textRenderer, x: panelX, y: panelY + 120, text: fpsText, r: fpsColor.r, g: fpsColor.g, b: fpsColor.b)
+        
         // Next piece
-        drawText(textRenderer: textRenderer, x: panelX, y: panelY + 130, text: "Next:", r: 255, g: 255, b: 255)
+        drawText(textRenderer: textRenderer, x: panelX, y: panelY + 160, text: "Next:", r: 255, g: 255, b: 255)
         
         let nextBlocks = engine.nextPiece.getBlocks()
         let minX = nextBlocks.map { $0.x }.min() ?? 0
         let minY = nextBlocks.map { $0.y }.min() ?? 0
         let nextStartX = panelX
-        let nextStartY = panelY + 160
+        let nextStartY = panelY + 190
         
         for block in nextBlocks {
             let x = block.x - minX
@@ -206,9 +213,9 @@ class TetrisGameRenderer: GameRenderer {
         let nextNextMinX = nextNextBlocks.map { $0.x }.min() ?? 0
         let nextNextMinY = nextNextBlocks.map { $0.y }.min() ?? 0
         let nextNextStartX = panelX
-        let nextNextStartY = panelY + 250
+        let nextNextStartY = panelY + 280
         
-        drawText(textRenderer: textRenderer, x: panelX, y: panelY + 220, text: "After:", r: 200, g: 200, b: 200)
+        drawText(textRenderer: textRenderer, x: panelX, y: panelY + 250, text: "After:", r: 200, g: 200, b: 200)
         
         for block in nextNextBlocks {
             let x = block.x - nextNextMinX
