@@ -618,6 +618,7 @@ enum GameEvent {
     case gamepadButtonUp(UInt8)
     case windowFocusLost
     case windowFocusGained
+    case windowResized
 }
 
 /// Swift-native key code enum (replaces SDL_Scancode usage)
@@ -745,6 +746,9 @@ struct EventPoller {
             
         case UInt32(SDL_EVENT_WINDOW_FOCUS_GAINED.rawValue):
             return .windowFocusGained
+            
+        case UInt32(SDL_EVENT_WINDOW_RESIZED.rawValue):
+            return .windowResized
             
         default:
             // Skip all other events (including analog stick, touchpad, sensor, etc.)

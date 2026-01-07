@@ -704,6 +704,14 @@ class SDL3Game {
                 }
                 
                 // Don't auto-resume game - user must press ESC to resume after pausing
+            case .windowResized:
+                // Update logical presentation when window is resized to maintain consistent scaling
+                #if os(Linux)
+                if let sdlRenderer = renderer?.sdlHandle {
+                    _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+                }
+                #endif
+                break
             }
             
             // Limit to prevent infinite loops
