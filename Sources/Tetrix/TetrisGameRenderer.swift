@@ -240,11 +240,19 @@ class TetrisGameRenderer: GameRenderer {
         
         // Game state
         if engine.gameState == .paused {
-            drawText(textRenderer: textRenderer, x: panelX, y: panelY + 300, text: "PAUSED", r: 255, g: 255, b: 0)
-            if usingController && gamepadExists {
-                drawText(textRenderer: textRenderer, x: panelX, y: panelY + 330, text: "Press Options", r: 200, g: 200, b: 200)
-            } else {
-                drawText(textRenderer: textRenderer, x: panelX, y: panelY + 330, text: "Press ESC", r: 200, g: 200, b: 200)
+            // Center "PAUSED" text over the game board
+            if let textRenderer = textRenderer {
+                let pausedText = "PAUSED"
+                let pausedTextWidth = textRenderer.measureText(pausedText).width
+                let pausedTextX = boardX + Int32(boardPixelWidth / 2) - Int32(pausedTextWidth / 2)
+                let pausedTextY = boardY + Int32(boardPixelHeight / 2) - 20
+                drawText(textRenderer: textRenderer, x: pausedTextX, y: pausedTextY, text: pausedText, r: 255, g: 255, b: 0)
+                
+                let resumeText = usingController && gamepadExists ? "Press Options" : "Press ESC"
+                let resumeTextWidth = textRenderer.measureText(resumeText).width
+                let resumeTextX = boardX + Int32(boardPixelWidth / 2) - Int32(resumeTextWidth / 2)
+                let resumeTextY = pausedTextY + 30
+                drawText(textRenderer: textRenderer, x: resumeTextX, y: resumeTextY, text: resumeText, r: 200, g: 200, b: 200)
             }
         }
         
