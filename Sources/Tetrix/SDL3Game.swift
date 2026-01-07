@@ -248,7 +248,8 @@ class SDL3Game {
             renderer = Renderer(sdlRenderer: sdlRenderer)
             
             // Set logical presentation immediately after renderer creation to prevent scaling issues
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+            // Use letterbox mode for consistent centering and aspect ratio
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .letterbox)
             
             // Initialize text renderer and set renderer
             if let textRenderer = SwiftTextRenderer() {
@@ -352,7 +353,8 @@ class SDL3Game {
             renderer = Renderer(sdlRenderer: sdlRenderer)
             
             // Set logical presentation immediately after renderer creation to prevent scaling issues
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+            // Use letterbox mode for consistent centering and aspect ratio
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .letterbox)
             
             // Initialize text renderer and set renderer (works on all platforms with SDL3)
             if let textRenderer = SwiftTextRenderer() {
@@ -706,11 +708,10 @@ class SDL3Game {
                 // Don't auto-resume game - user must press ESC to resume after pausing
             case .windowResized:
                 // Update logical presentation when window is resized to maintain consistent scaling
-                #if os(Linux)
+                // Use letterbox mode to ensure proper centering regardless of window size
                 if let sdlRenderer = renderer?.sdlHandle {
-                    _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+                    _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .letterbox)
                 }
-                #endif
                 break
             }
             
@@ -966,10 +967,9 @@ class SDL3Game {
         // Toggle fullscreen using SDL3 (works on all platforms)
         _ = SDLWindowHelper.setFullscreen(window: sdlWindow, fullscreen: isFullscreen)
         
-        // Always use integer scale mode for sharp scaling in both windowed and fullscreen modes
-        // This ensures consistent scaling and maintains aspect ratio perfectly
+        // Use letterbox mode for consistent centering and aspect ratio in both windowed and fullscreen modes
         if let sdlRenderer = renderer.sdlHandle {
-            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .integerScale)
+            _ = SDLWindowHelper.setLogicalPresentation(renderer: sdlRenderer, width: logicalWidth, height: logicalHeight, mode: .letterbox)
         }
         saveSettings()
     }

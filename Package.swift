@@ -29,7 +29,13 @@ let package = Package(
                 .unsafeFlags(["-L", "."], .when(platforms: [.windows])),
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
-                .linkedLibrary("SDL3")
+                .linkedLibrary("SDL3"),
+                // Windows: Required system libraries for SDL3
+                .linkedLibrary("ole32", .when(platforms: [.windows])),
+                .linkedLibrary("oleaut32", .when(platforms: [.windows])),
+                .linkedLibrary("imm32", .when(platforms: [.windows])),
+                .linkedLibrary("version", .when(platforms: [.windows])),
+                .linkedLibrary("winmm", .when(platforms: [.windows]))
             ]
         ),
         .executableTarget(
@@ -57,6 +63,12 @@ let package = Package(
                 // Linux: Add /usr/local/lib for SDL3 built from source
                 .unsafeFlags(["-L", "/usr/local/lib"], .when(platforms: [.linux])),
                 .linkedLibrary("SDL3"),
+                // Windows: Required system libraries for SDL3
+                .linkedLibrary("ole32", .when(platforms: [.windows])),
+                .linkedLibrary("oleaut32", .when(platforms: [.windows])),
+                .linkedLibrary("imm32", .when(platforms: [.windows])),
+                .linkedLibrary("version", .when(platforms: [.windows])),
+                .linkedLibrary("winmm", .when(platforms: [.windows])),
                 // Linux: Link PulseAudio libraries directly (no C wrapper needed)
                 .unsafeFlags(["-lpulse-simple", "-lpulse"], .when(platforms: [.linux])),
                 // Static linking and optimization flags for Windows release builds
