@@ -99,7 +99,7 @@ swift build
 
 - The game uses SDL3 for cross-platform windowed graphics (Windows/macOS use native graphics, Linux uses SDL3)
 - Text rendering uses Swift-native implementations (Windows: GDI, macOS: Core Text, Linux: Bitmap font)
-- The game runs at 60 FPS
+- The game runs at up to 180 FPS (180 Hz) in release builds
 - Supports gamepad/controller input
 
 ## License
