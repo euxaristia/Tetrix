@@ -10,7 +10,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "../SwiftSDL")
+        .package(url: "https://github.com/euxaristia/SwiftSDL.git", from: "1.0.25")
     ],
     targets: [
         .target(

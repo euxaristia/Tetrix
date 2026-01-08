@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "swiftsdl",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/euxaristia/SwiftSDL.git",
+      "state" : {
+        "revision" : "09c23eb551480badd686e7c483d01552f7cbda73",
+        "version" : "1.0.25"
+      }
+    }
+  ],
+  "version" : 2
+}
