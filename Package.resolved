@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/euxaristia/SwiftSDL.git",
       "state" : {
-        "revision" : "09c23eb551480badd686e7c483d01552f7cbda73",
-        "version" : "1.0.25"
+        "revision" : "70bfb9b7a6d81de2bba46b8e9572089056480ecf",
+        "version" : "1.0.27"
       }
     }
   ],
