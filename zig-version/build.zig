@@ -30,6 +30,21 @@ pub fn build(b: *std.Build) void {
     const target_os = target.result.os.tag;
     switch (target_os) {
         .windows => {
+            // Windows-specific linker optimizations (matching Package.swift)
+            // These reduce binary size and improve obfuscation
+            if (optimize != .Debug) {
+                // Remove unreferenced functions and data
+                exe.want_lto = true; // Link-time optimization (similar to /OPT:REF)
+                // Note: Zig's LTO includes dead code elimination similar to /OPT:REF
+                // /OPT:ICF (identical COMDAT folding) is handled by LTO
+                // /INCREMENTAL:NO is default for release builds in Zig
+            }
+            
+            // Build as Windows GUI application (no console window)
+            // This matches Package.swift's /SUBSYSTEM:WINDOWS
+            exe.subsystem = .Windows;
+            // Entry point is handled automatically by Zig
+            
             // For Windows: Compile GLFW C sources directly into the executable
             // This avoids needing a separate static library build step
             exe.root_module.addIncludePath(glfw_dep.path("deps"));
