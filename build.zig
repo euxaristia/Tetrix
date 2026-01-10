@@ -49,12 +49,10 @@ pub fn build(b: *std.Build) void {
             // For now, Windows builds will need GLFW DLLs or a different approach
             exe.root_module.addIncludePath(glfw_dep.path("deps"));
             
-            // Note: Zig 0.16+ changed the API
-            // Windows cross-compilation temporarily disabled - needs API update
-            // For now, comment out Windows library linking
-            // TODO: Update when Windows cross-compilation is needed
+            // Link Windows audio libraries for WASAPI
+            exe.linkSystemLibrary("ole32");  // COM initialization
+            exe.linkSystemLibrary("avrt");   // Multimedia Class Scheduler Service (for low-latency audio)
             // Windows doesn't need math library (it's part of libc)
-            // Windows uses different audio APIs (DirectSound/WASAPI), not ALSA
         },
         .linux => {
             // Link GLFW (available via system package manager)

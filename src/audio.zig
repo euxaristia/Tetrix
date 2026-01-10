@@ -139,7 +139,10 @@ pub const AudioPlayer = struct {
     sample_index: u64 = 0,
     note_index: usize = 0,
     note_sample_position: u32 = 0,
-    pcm_handle: ?*c.snd_pcm_t = null,
+    pcm_handle: ?*c.snd_pcm_t = null, // ALSA handle (Linux)
+    wasapi_client: ?*c.IAudioClient = null, // WASAPI client (Windows)
+    wasapi_render: ?*c.IAudioRenderClient = null, // WASAPI render client (Windows)
+    wasapi_buffer_size: u32 = 0, // WASAPI buffer size in frames
     debug_wrote_after_toggle: bool = false,
 
     const samples_per_beat: u32 = @intFromFloat(@as(f32, @floatFromInt(SAMPLE_RATE)) * 60.0 / TEMPO_BPM);
@@ -162,12 +165,18 @@ pub const AudioPlayer = struct {
     fn audioThreadFn(self: *AudioPlayer) void {
         std.debug.print("Audio thread started!\n", .{});
 
-        // Audio is only supported on Linux (ALSA)
-        // On Windows, ALSA functions are stubbed and will fail silently
-        if (builtin.target.os.tag != .linux) {
-            std.debug.print("Audio: Not supported on this platform (only Linux/ALSA is supported)\n", .{});
+        // Platform-specific audio initialization
+        if (builtin.target.os.tag == .linux) {
+            self.initAlsa();
+        } else if (builtin.target.os.tag == .windows) {
+            self.initWasapi();
+        } else {
+            std.debug.print("Audio: Not supported on this platform\n", .{});
             return;
         }
+    }
+
+    fn initAlsa(self: *AudioPlayer) void {
 
         // Initialize ALSA in blocking mode within the audio thread
         var handle: ?*c.snd_pcm_t = null;
@@ -284,7 +293,9 @@ pub const AudioPlayer = struct {
             if (!enabled or !playing) {
                 // Sleep when not playing to avoid busy-waiting
                 // Don't generate samples when disabled - this ensures clean state when re-enabled
-                std.Thread.sleep(10 * std.time.ns_per_ms);
+                // Zig 0.16+ API: nanosleep takes seconds and nanoseconds separately
+                const delay_ns = 10 * std.time.ns_per_ms;
+                std.posix.nanosleep(0, delay_ns);
                 continue;
             }
             
@@ -408,6 +419,239 @@ pub const AudioPlayer = struct {
         }
     }
 
+    fn initWasapi(self: *AudioPlayer) void {
+        std.debug.print("Audio: Initializing WASAPI...\n", .{});
+
+        // Initialize COM
+        const hr_init = c.CoInitializeEx(null, 0);
+        if (hr_init != 0 and hr_init != 1) { // S_OK = 0, S_FALSE = 1
+            std.debug.print("Audio: Failed to initialize COM: {d}\n", .{hr_init});
+            return;
+        }
+
+        // Create device enumerator
+        var enumerator: ?*c.IMMDeviceEnumerator = null;
+        const hr_create = c.CoCreateInstance(
+            c.CLSID_MMDeviceEnumerator,
+            null,
+            c.CLSCTX_ALL,
+            c.IID_IMMDeviceEnumerator,
+            @ptrCast(&enumerator),
+        );
+        if (hr_create != 0 or enumerator == null) {
+            std.debug.print("Audio: Failed to create device enumerator: {d}\n", .{hr_create});
+            c.CoUninitialize();
+            return;
+        }
+
+        // Get default audio endpoint
+        var device: ?*c.IMMDevice = null;
+        const hr_endpoint = c.IMMDeviceEnumerator_GetDefaultAudioEndpoint(
+            enumerator.?,
+            c.eRender,
+            c.eConsole,
+            &device,
+        );
+        if (hr_endpoint != 0 or device == null) {
+            std.debug.print("Audio: Failed to get default audio endpoint: {d}\n", .{hr_endpoint});
+            c.CoUninitialize();
+            return;
+        }
+
+        // Activate IAudioClient
+        var audioClient: ?*c.IAudioClient = null;
+        const hr_activate = c.IMMDevice_Activate(
+            device.?,
+            c.IID_IAudioClient,
+            c.CLSCTX_ALL,
+            null,
+            @ptrCast(&audioClient),
+        );
+        if (hr_activate != 0 or audioClient == null) {
+            std.debug.print("Audio: Failed to activate IAudioClient: {d}\n", .{hr_activate});
+            c.CoUninitialize();
+            return;
+        }
+
+        // Set up WAVEFORMATEX for 16-bit PCM, mono, 44100 Hz
+        var format = c.WAVEFORMATEX{
+            .wFormatTag = 1, // WAVE_FORMAT_PCM
+            .nChannels = 1,
+            .nSamplesPerSec = SAMPLE_RATE,
+            .nAvgBytesPerSec = SAMPLE_RATE * 2, // 16-bit = 2 bytes per sample
+            .nBlockAlign = 2, // 1 channel * 2 bytes
+            .wBitsPerSample = 16,
+            .cbSize = 0,
+        };
+
+        // Initialize audio client (shared mode, 10ms buffer)
+        const REFTIMES_PER_SEC: c_ulong = 10000000;
+        const bufferDuration: c_ulong = REFTIMES_PER_SEC / 100; // 100ms buffer
+        const hr_init_client = c.IAudioClient_Initialize(
+            audioClient.?,
+            c.AUDCLNT_SHAREMODE_SHARED,
+            0, // No stream flags
+            bufferDuration,
+            0, // Periodicity (not used in shared mode)
+            &format,
+            null, // No audio session GUID
+        );
+        if (hr_init_client != 0) {
+            std.debug.print("Audio: Failed to initialize IAudioClient: {d}\n", .{hr_init_client});
+            c.CoUninitialize();
+            return;
+        }
+
+        // Get buffer size
+        var bufferSize: c_ulong = 0;
+        const hr_buffer = c.IAudioClient_GetBufferSize(audioClient.?, &bufferSize);
+        if (hr_buffer != 0) {
+            std.debug.print("Audio: Failed to get buffer size: {d}\n", .{hr_buffer});
+            c.CoUninitialize();
+            return;
+        }
+        std.debug.print("Audio: WASAPI buffer size: {d} frames\n", .{bufferSize});
+
+        // Get IAudioRenderClient
+        var renderClient: ?*c.IAudioRenderClient = null;
+        const hr_service = c.IAudioClient_GetService(
+            audioClient.?,
+            c.IID_IAudioRenderClient,
+            @ptrCast(&renderClient),
+        );
+        if (hr_service != 0 or renderClient == null) {
+            std.debug.print("Audio: Failed to get IAudioRenderClient: {d}\n", .{hr_service});
+            c.CoUninitialize();
+            return;
+        }
+
+        // Store handles
+        {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.wasapi_client = audioClient;
+            self.wasapi_render = renderClient;
+            self.wasapi_buffer_size = @intCast(bufferSize);
+        }
+
+        std.debug.print("Audio: WASAPI initialized successfully\n", .{});
+
+        // Start audio client
+        const hr_start = c.IAudioClient_Start(audioClient.?);
+        if (hr_start != 0) {
+            std.debug.print("Audio: Failed to start IAudioClient: {d}\n", .{hr_start});
+            c.CoUninitialize();
+            return;
+        }
+
+        // Audio generation loop
+        var buffer: [512]i16 = undefined;
+        var last_enabled: bool = true;
+        var last_playing: bool = true;
+
+        while (!self.should_stop.load(.acquire)) {
+            const enabled = self.enabled.load(.acquire);
+            const playing = self.playing.load(.acquire);
+
+            const is_resuming = (enabled and playing) and (!last_enabled or !last_playing);
+
+            if (enabled != last_enabled or playing != last_playing) {
+                std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{ last_enabled, enabled, last_playing, playing });
+                last_enabled = enabled;
+                last_playing = playing;
+                self.mutex.lock();
+                self.debug_wrote_after_toggle = false;
+                self.mutex.unlock();
+            }
+
+            if (!enabled or !playing) {
+                const delay_ns = 10 * std.time.ns_per_ms;
+                std.posix.nanosleep(0, delay_ns);
+                continue;
+            }
+
+            const enabled_after_sleep = self.enabled.load(.acquire);
+            const playing_after_sleep = self.playing.load(.acquire);
+            if (!enabled_after_sleep or !playing_after_sleep) {
+                continue;
+            }
+
+            if (is_resuming) {
+                std.debug.print("Audio: Resuming WASAPI playback\n", .{});
+                self.mutex.lock();
+                if (self.wasapi_client) |client| {
+                    _ = c.IAudioClient_Start(client);
+                }
+                self.mutex.unlock();
+            }
+
+            // Generate audio samples
+            self.mutex.lock();
+            var sample_idx: usize = 0;
+            while (sample_idx < buffer.len) : (sample_idx += 1) {
+                buffer[sample_idx] = self.generateSample();
+            }
+            self.mutex.unlock();
+
+            // Write to WASAPI
+            self.mutex.lock();
+            const client = self.wasapi_client;
+            const render = self.wasapi_render;
+            self.mutex.unlock();
+
+            if (client == null or render == null) {
+                break;
+            }
+
+            // Get available space in buffer
+            // Request buffer space
+            var data: [*]u8 = undefined;
+            self.mutex.lock();
+            const bufSize = self.wasapi_buffer_size;
+            self.mutex.unlock();
+            const framesToWrite: c_ulong = @min(@as(c_ulong, buffer.len), bufSize / 4); // Write quarter buffer at a time
+            const hr_get = c.IAudioRenderClient_GetBuffer(render.?, framesToWrite, &data);
+            if (hr_get == 0) {
+                // Copy audio data (16-bit samples)
+                @memcpy(data[0..framesToWrite * 2], std.mem.sliceAsBytes(buffer[0..framesToWrite]));
+
+                const hr_release = c.IAudioRenderClient_ReleaseBuffer(render.?, framesToWrite, 0);
+                if (hr_release != 0) {
+                    std.debug.print("Audio: Failed to release WASAPI buffer: {d}\n", .{hr_release});
+                }
+
+                if (framesToWrite > 0) {
+                    self.mutex.lock();
+                    defer self.mutex.unlock();
+                    if (!self.debug_wrote_after_toggle) {
+                        std.debug.print("Audio: Successfully wrote {d} frames to WASAPI\n", .{framesToWrite});
+                        self.debug_wrote_after_toggle = true;
+                    }
+                }
+            } else {
+                // Buffer not ready, sleep a bit
+                const delay_ns = 5 * std.time.ns_per_ms;
+                std.posix.nanosleep(0, delay_ns);
+            }
+        }
+
+        // Cleanup
+        {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            if (self.wasapi_client) |client| {
+                _ = c.IAudioClient_Stop(client);
+                _ = c.IAudioClient_Reset(client);
+            }
+            self.wasapi_client = null;
+            self.wasapi_render = null;
+        }
+
+        c.CoUninitialize();
+        std.debug.print("Audio: WASAPI thread exiting\n", .{});
+    }
+
     pub fn deinit(self: *AudioPlayer) void {
         // Signal the audio thread to stop
         self.should_stop.store(true, .release);
@@ -421,7 +665,8 @@ pub const AudioPlayer = struct {
         const thread_to_join = self.audio_thread;
         
         // Give the thread a moment to stop gracefully
-        std.Thread.sleep(100 * std.time.ns_per_ms);
+        const delay_ns = 100 * std.time.ns_per_ms;
+        std.posix.nanosleep(0, delay_ns);
 
         // Safety check - audio_thread might be null if initialization failed
         if (thread_to_join) |thread| {
@@ -430,16 +675,25 @@ pub const AudioPlayer = struct {
             std.debug.print("Audio: deinit called but audio_thread was null\n", .{});
         }
 
-        // Ensure ALSA handle is closed (may already be closed by thread)
+        // Ensure audio handles are closed (may already be closed by thread)
         self.mutex.lock();
         defer self.mutex.unlock();
 
+        // Cleanup ALSA (Linux)
         if (self.pcm_handle) |handle| {
             // Drain and close - errors are expected if already closed by thread
             _ = c.snd_pcm_drain(handle);
             _ = c.snd_pcm_close(handle);
             self.pcm_handle = null;
         }
+
+        // Cleanup WASAPI (Windows)
+        if (self.wasapi_client) |client| {
+            _ = c.IAudioClient_Stop(client);
+            _ = c.IAudioClient_Reset(client);
+            self.wasapi_client = null;
+        }
+        self.wasapi_render = null;
     }
 
     pub fn play(self: *AudioPlayer) void {
