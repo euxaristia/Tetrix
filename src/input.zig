@@ -133,29 +133,60 @@ pub const InputHandler = struct {
     }
 
     fn handleJoystick(self: *InputHandler, game: *TetrisEngine, delta_time: f64, music_enabled: *bool) void {
+        // Check if joystick is a gamepad (preferred API for modern controllers like DualSense)
+        const is_gamepad = c.glfwJoystickIsGamepad(c.GLFW_JOYSTICK_1) == c.GLFW_TRUE;
+        
+        var gamepad_state: c.GLFWgamepadstate = undefined;
         var axes_count: c_int = 0;
-        const axes_ptr = c.glfwGetJoystickAxes(c.GLFW_JOYSTICK_1, &axes_count);
-        if (axes_ptr == null) return;
-
         var buttons_count: c_int = 0;
-        const buttons_ptr = c.glfwGetJoystickButtons(c.GLFW_JOYSTICK_1, &buttons_count);
-        if (buttons_ptr == null) return;
+        var axes_ptr: ?[*]const f32 = null;
+        var buttons_ptr: ?[*]const u8 = null;
 
-        const axes = axes_ptr[0..@intCast(axes_count)];
-        const buttons = buttons_ptr[0..@intCast(buttons_count)];
+        var axes: []const f32 = undefined;
+        var buttons: []const u8 = undefined;
 
-        // D-Pad (axes 6 and 7 on many controllers, or buttons)
-        const dpad_x: f32 = if (axes_count > 6) axes[6] else 0.0;
-        const dpad_y: f32 = if (axes_count > 7) axes[7] else 0.0;
+        if (is_gamepad) {
+            // Use gamepad API for proper D-pad button support
+            if (c.glfwGetGamepadState(c.GLFW_JOYSTICK_1, &gamepad_state) == c.GLFW_TRUE) {
+                axes = &gamepad_state.axes;
+                buttons = &gamepad_state.buttons;
+                axes_count = 6; // GLFW gamepad has 6 axes
+                buttons_count = 15; // GLFW gamepad has 15 buttons
+            } else {
+                return;
+            }
+        } else {
+            // Fallback to joystick API for non-gamepad devices
+            axes_ptr = c.glfwGetJoystickAxes(c.GLFW_JOYSTICK_1, &axes_count);
+            if (axes_ptr == null) return;
 
-        // Alternative: use left stick
-        const stick_x: f32 = if (axes_count > 0) axes[0] else 0.0;
-        const stick_y: f32 = if (axes_count > 1) axes[1] else 0.0;
+            buttons_ptr = c.glfwGetJoystickButtons(c.GLFW_JOYSTICK_1, &buttons_count);
+            if (buttons_ptr == null) return;
+            
+            axes = axes_ptr.?[0..@intCast(axes_count)];
+            buttons = buttons_ptr.?[0..@intCast(buttons_count)];
+        }
 
-        const left = dpad_x < -0.5 or stick_x < -0.5;
-        const right = dpad_x > 0.5 or stick_x > 0.5;
-        const down = dpad_y > 0.5 or stick_y > 0.5;
-        const up = dpad_y < -0.5 or stick_y < -0.5;
+        // D-Pad: Use buttons if gamepad API, otherwise try axes 6/7 or left stick
+        const left: bool = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_DPAD_LEFT] == c.GLFW_PRESS
+        else
+            (if (axes_count > 6) axes[6] < -0.5 else false) or (if (axes_count > 0) axes[0] < -0.5 else false);
+
+        const right: bool = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_DPAD_RIGHT] == c.GLFW_PRESS
+        else
+            (if (axes_count > 6) axes[6] > 0.5 else false) or (if (axes_count > 0) axes[0] > 0.5 else false);
+
+        const down: bool = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == c.GLFW_PRESS
+        else
+            (if (axes_count > 7) axes[7] > 0.5 else false) or (if (axes_count > 1) axes[1] > 0.5 else false);
+
+        const up: bool = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_DPAD_UP] == c.GLFW_PRESS
+        else
+            (if (axes_count > 7) axes[7] < -0.5 else false) or (if (axes_count > 1) axes[1] < -0.5 else false);
 
         // Handle D-pad left
         if (left) {
@@ -224,8 +255,15 @@ pub const InputHandler = struct {
         }
 
         // Handle D-pad up / A button (rotate)
-        const a_button = buttons_count > 0 and buttons[0] == c.GLFW_PRESS;
-        const x_button = buttons_count > 2 and buttons[2] == c.GLFW_PRESS;
+        const a_button = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_A] == c.GLFW_PRESS
+        else
+            buttons_count > 0 and buttons[0] == c.GLFW_PRESS;
+        
+        const x_button = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_X] == c.GLFW_PRESS
+        else
+            buttons_count > 2 and buttons[2] == c.GLFW_PRESS;
 
         if (up or a_button or x_button) {
             self.use_controller = true;
@@ -240,7 +278,10 @@ pub const InputHandler = struct {
         }
 
         // Start button (pause)
-        const start_button = buttons_count > 7 and buttons[7] == c.GLFW_PRESS;
+        const start_button = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_START] == c.GLFW_PRESS
+        else
+            buttons_count > 7 and buttons[7] == c.GLFW_PRESS;
         if (start_button) {
             self.use_controller = true;
             if (!self.joy_start_pressed) {
@@ -252,7 +293,10 @@ pub const InputHandler = struct {
         }
 
         // Select button (restart on game over)
-        const select_button = buttons_count > 6 and buttons[6] == c.GLFW_PRESS;
+        const select_button = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_BACK] == c.GLFW_PRESS
+        else
+            buttons_count > 6 and buttons[6] == c.GLFW_PRESS;
         if (select_button) {
             self.use_controller = true;
             if (!self.joy_select_pressed) {
@@ -266,7 +310,10 @@ pub const InputHandler = struct {
         }
 
         // M button mapping (Y button - index 3 on many controllers)
-        const y_button = buttons_count > 3 and buttons[3] == c.GLFW_PRESS;
+        const y_button = if (is_gamepad)
+            buttons[c.GLFW_GAMEPAD_BUTTON_Y] == c.GLFW_PRESS
+        else
+            buttons_count > 3 and buttons[3] == c.GLFW_PRESS;
         if (y_button) {
             music_enabled.* = !music_enabled.*;
         }
