@@ -375,22 +375,45 @@ pub const Renderer = struct {
         self.drawText(instruction, inst_x, box_y + 50);
     }
 
-    // Simple bitmap font rendering using OpenGL lines
+    // Simple bitmap font rendering using thick lines (filled quads)
     fn drawChar(_: *Renderer, char: u8, x: i32, y: i32, scale: f32) void {
         const segments = getCharSegments(char);
-        const s: i32 = @intFromFloat(scale);
+        const s = scale;
+        const thickness: f32 = scale * 0.8; // Line thickness
 
         for (segments) |seg| {
             if (seg[0] == 0 and seg[1] == 0 and seg[2] == 0 and seg[3] == 0) break;
-            const x1 = x + seg[0] * s;
-            const y1 = y + seg[1] * s;
-            const x2 = x + seg[2] * s;
-            const y2 = y + seg[3] * s;
 
-            c.glBegin(c.GL_LINES);
-            c.glVertex2f(@floatFromInt(x1), @floatFromInt(y1));
-            c.glVertex2f(@floatFromInt(x2), @floatFromInt(y2));
-            c.glEnd();
+            const x1 = @as(f32, @floatFromInt(x)) + @as(f32, @floatFromInt(seg[0])) * s;
+            const y1 = @as(f32, @floatFromInt(y)) + @as(f32, @floatFromInt(seg[1])) * s;
+            const x2 = @as(f32, @floatFromInt(x)) + @as(f32, @floatFromInt(seg[2])) * s;
+            const y2 = @as(f32, @floatFromInt(y)) + @as(f32, @floatFromInt(seg[3])) * s;
+
+            // Draw thick line as a quad
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len = @sqrt(dx * dx + dy * dy);
+
+            if (len < 0.01) {
+                // Draw a point as a small square
+                c.glBegin(c.GL_QUADS);
+                c.glVertex2f(x1 - thickness / 2, y1 - thickness / 2);
+                c.glVertex2f(x1 + thickness / 2, y1 - thickness / 2);
+                c.glVertex2f(x1 + thickness / 2, y1 + thickness / 2);
+                c.glVertex2f(x1 - thickness / 2, y1 + thickness / 2);
+                c.glEnd();
+            } else {
+                // Perpendicular vector for thickness
+                const px = -dy / len * thickness / 2;
+                const py = dx / len * thickness / 2;
+
+                c.glBegin(c.GL_QUADS);
+                c.glVertex2f(x1 + px, y1 + py);
+                c.glVertex2f(x1 - px, y1 - py);
+                c.glVertex2f(x2 - px, y2 - py);
+                c.glVertex2f(x2 + px, y2 + py);
+                c.glEnd();
+            }
         }
     }
 

@@ -179,20 +179,18 @@ pub const AudioPlayer = struct {
 
         const handle = self.pcm_handle.?;
 
-        // Generate audio buffer (smaller for lower latency)
-        var buffer: [256]i16 = undefined;
+        // Generate larger audio buffer to prevent underruns
+        var buffer: [2048]i16 = undefined;
 
         for (&buffer) |*sample| {
             sample.* = self.generateSample();
         }
 
-        // Write to ALSA (non-blocking)
+        // Write to ALSA (non-blocking, silent recovery)
         const frames = c.snd_pcm_writei(handle, &buffer, buffer.len);
         if (frames < 0) {
-            // EAGAIN means buffer is full, just skip this update
-            if (frames != -11) { // -11 is EAGAIN
-                _ = c.snd_pcm_recover(handle, @intCast(frames), 0);
-            }
+            // Silently recover from any error (1 = silent)
+            _ = c.snd_pcm_recover(handle, @intCast(frames), 1);
         }
     }
 
