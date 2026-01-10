@@ -14,17 +14,33 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // Link GLFW
+    // Link GLFW (cross-platform)
     exe.linkSystemLibrary("glfw");
 
-    // Link OpenGL
-    exe.linkSystemLibrary("GL");
-
-    // Link math library
-    exe.linkSystemLibrary("m");
-
-    // Link audio libraries for Linux
-    exe.linkSystemLibrary("asound");
+    // Link OpenGL and platform-specific libraries
+    const target_os = target.result.os.tag;
+    switch (target_os) {
+        .windows => {
+            exe.linkSystemLibrary("opengl32");
+            // Windows doesn't need math library (it's part of libc)
+            // Windows uses different audio APIs (DirectSound/WASAPI), not ALSA
+        },
+        .linux => {
+            exe.linkSystemLibrary("GL");
+            exe.linkSystemLibrary("m"); // Math library for Linux
+            exe.linkSystemLibrary("asound"); // ALSA for Linux
+        },
+        .macos => {
+            exe.linkFramework("OpenGL");
+            // macOS doesn't need math library
+            // macOS uses CoreAudio, not ALSA
+        },
+        else => {
+            // For other platforms, try generic names
+            exe.linkSystemLibrary("GL");
+            exe.linkSystemLibrary("m");
+        },
+    }
 
     b.installArtifact(exe);
 
