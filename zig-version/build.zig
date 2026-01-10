@@ -20,21 +20,53 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     
+    const glfw_include_path = glfw_dep.path("include");
+    
     // Add GLFW include path so headers can be found
-    exe.root_module.addIncludePath(glfw_dep.path("include"));
-    exe.addIncludePath(glfw_dep.path("include"));
+    exe.root_module.addIncludePath(glfw_include_path);
+    exe.addIncludePath(glfw_include_path);
 
     // Link platform-specific libraries
     const target_os = target.result.os.tag;
     switch (target_os) {
         .windows => {
-            // GLFW source is fetched via build.zig.zon, but needs to be built/linked
-            // For now, Windows builds will fail at link time until GLFW is built
-            // TODO: Build GLFW from source or link pre-built Windows binaries
-            // The GLFW headers are available via glfw_dep.path("include")
-            // but the library needs to be compiled and linked
+            // For Windows: Compile GLFW C sources directly into the executable
+            // This avoids needing a separate static library build step
+            exe.root_module.addIncludePath(glfw_dep.path("deps"));
+            
+            // Common GLFW source files - compile directly into executable
+            const glfw_cflags = &.{"-D_GLFW_WIN32"};
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/context.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/init.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/input.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/monitor.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/platform.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/vulkan.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/window.c"), .flags = glfw_cflags });
+            
+            // Windows-specific source files
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_init.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_joystick.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_module.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_monitor.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_thread.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_time.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_window.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/wgl_context.c"), .flags = glfw_cflags });
+            
+            // Null context stubs (needed for platform.c)
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_init.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_joystick.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_monitor.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_window.c"), .flags = glfw_cflags });
+            
+            // EGL and OSMesa stubs (optional, but referenced)
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/egl_context.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/osmesa_context.c"), .flags = glfw_cflags });
             
             exe.linkSystemLibrary("opengl32");
+            exe.linkSystemLibrary("gdi32");
+            exe.linkSystemLibrary("user32");
             // Windows doesn't need math library (it's part of libc)
             // Windows uses different audio APIs (DirectSound/WASAPI), not ALSA
         },
