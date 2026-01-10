@@ -160,13 +160,15 @@ pub const AudioPlayer = struct {
     waveout_buffer_data: [4][4096]u8 = undefined, // Audio buffer data (Windows)
     waveout_current_buffer: usize = 0, // Current buffer index (Windows)
     debug_wrote_after_toggle: bool = false,
+    fade_volume: f32 = 1.0, // Fade volume multiplier (0.0 to 1.0) for smooth mute/unmute
+    fade_samples_remaining: u32 = 0, // Samples remaining in fade transition
 
     const samples_per_beat: u32 = @intFromFloat(@as(f32, @floatFromInt(SAMPLE_RATE)) * 60.0 / TEMPO_BPM);
 
     pub fn init() AudioPlayer {
         return AudioPlayer{};
     }
-    
+
     pub fn start(self: *AudioPlayer) void {
         self.startAudioThread();
     }
@@ -201,17 +203,17 @@ pub const AudioPlayer = struct {
         // Prioritize "default" first for PipeWire compatibility (routes to default PipeWire device)
         std.debug.print("Audio: Trying to open ALSA devices...\n", .{});
         const devices = [_][*:0]const u8{
-            "default",   // PipeWire default device (should route to user's default audio device)
+            "default", // PipeWire default device (should route to user's default audio device)
             "plughw:1,3", // Plug version for NVIDIA HDMI 0 - handles format conversion
             "plughw:1,7", // Plug version for NVIDIA HDMI 1
             "plughw:0,0", // Plug version for HyperX Wireless
             "plughw:2,0", // Plug version for Intel PCH Analog
             "sysdefault:CARD=NVidia", // System default for NVIDIA card
             "front:CARD=NVidia,DEV=3", // Front device for NVIDIA HDMI 0
-            "hw:1,3",    // NVIDIA HDMI 0 (DELL G2725D) - from aplay -l
-            "hw:1,7",    // NVIDIA HDMI 1
-            "hw:0,0",    // HyperX Wireless
-            "hw:2,0",    // Intel PCH Analog
+            "hw:1,3", // NVIDIA HDMI 0 (DELL G2725D) - from aplay -l
+            "hw:1,7", // NVIDIA HDMI 1
+            "hw:0,0", // HyperX Wireless
+            "hw:2,0", // Intel PCH Analog
         };
 
         var device_index: usize = 0;
@@ -222,7 +224,7 @@ pub const AudioPlayer = struct {
                 std.debug.print("Audio: Successfully opened device: {s}\n", .{devices[device_index]});
                 break;
             } else {
-                std.debug.print("Audio: Failed to open device {s}: {d}\n", .{devices[device_index], open_result});
+                std.debug.print("Audio: Failed to open device {s}: {d}\n", .{ devices[device_index], open_result });
             }
 
             // If we've tried all devices and none worked
@@ -286,42 +288,67 @@ pub const AudioPlayer = struct {
         // Track last state for debug output
         var last_enabled: bool = true;
         var last_playing: bool = true;
-        
+        const FADE_DURATION_MS: u32 = 200; // 200ms fade for smoother transitions (increased to reduce popping)
+        const FADE_DURATION_SAMPLES: u32 = (FADE_DURATION_MS * SAMPLE_RATE) / 1000; // ~8820 samples at 44.1kHz
+
         while (!self.should_stop.load(.acquire)) {
             const enabled = self.enabled.load(.acquire);
             const playing = self.playing.load(.acquire);
 
-            // Check if we're resuming playback (before updating last_playing)
-            const is_resuming = (enabled and playing) and (!last_enabled or !last_playing);
-            
-            // Debug: Show audio state changes (only when actually changing)
+            // Handle fade transitions when muting/unmuting
             if (enabled != last_enabled or playing != last_playing) {
-                std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
-                last_enabled = enabled;
-                last_playing = playing;
-                // Reset debug flag on state change (so we log first write after resuming)
+                std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{ last_enabled, enabled, last_playing, playing });
+
                 self.mutex.lock();
+                if ((enabled and playing) and (!last_enabled or !last_playing)) {
+                    // Unmuting: start fade in and prepare ALSA for clean start
+                    self.fade_samples_remaining = FADE_DURATION_SAMPLES;
+                    self.fade_volume = 0.0;
+                    // Prepare ALSA handle for clean start
+                    if (self.pcm_handle) |h| {
+                        _ = c.snd_pcm_prepare(h);
+                    }
+                } else if ((!enabled or !playing) and (last_enabled and last_playing)) {
+                    // Muting: start fade out (don't drain immediately - let fade complete)
+                    self.fade_samples_remaining = FADE_DURATION_SAMPLES;
+                    self.fade_volume = 1.0;
+                }
                 self.debug_wrote_after_toggle = false;
                 self.mutex.unlock();
+
+                last_enabled = enabled;
+                last_playing = playing;
             }
 
             // Check both enabled and playing states
             if (!enabled or !playing) {
-                // Sleep when not playing to avoid busy-waiting
-                // Don't generate samples when disabled - this ensures clean state when re-enabled
-                sleepMs(10);
-                continue;
+                // Still generate silence during fade-out to avoid pops
+                self.mutex.lock();
+                const fade_active = self.fade_samples_remaining > 0;
+                self.mutex.unlock();
+                if (!fade_active) {
+                    // Sleep when not playing to avoid busy-waiting
+                    sleepMs(10);
+                    continue;
+                }
             }
-            
+
             // Double-check state after sleep (in case it changed)
+            // But continue generating during fade-out to complete the fade smoothly
             const enabled_after_sleep = self.enabled.load(.acquire);
             const playing_after_sleep = self.playing.load(.acquire);
-            if (!enabled_after_sleep or !playing_after_sleep) {
+            self.mutex.lock();
+            const fade_active = self.fade_samples_remaining > 0;
+            self.mutex.unlock();
+            if ((!enabled_after_sleep or !playing_after_sleep) and !fade_active) {
                 if (enabled_after_sleep != enabled or playing_after_sleep != playing) {
-                    std.debug.print("Audio: state changed during sleep - enabled={}->{}, playing={}->{}\n", .{enabled, enabled_after_sleep, playing, playing_after_sleep});
+                    std.debug.print("Audio: state changed during sleep - enabled={}->{}, playing={}->{}\n", .{ enabled, enabled_after_sleep, playing, playing_after_sleep });
                 }
                 continue;
             }
+
+            // Check if we're resuming playback (before updating last_playing)
+            const is_resuming = (enabled_after_sleep and playing_after_sleep) and (!last_enabled or !last_playing);
 
             // If we're resuming playback after being stopped, prepare ALSA handle
             if (is_resuming) {
@@ -341,11 +368,43 @@ pub const AudioPlayer = struct {
             // Debug: Show when audio is actually playing (only on state change to avoid spam)
             // std.debug.print("Audio: Generating and writing audio (enabled={}, playing={})\n", .{enabled_after_sleep, playing_after_sleep});
 
-            // Generate audio samples
+            // Generate audio samples with per-sample fade (using cosine curve for smoother transition)
             self.mutex.lock();
             var sample_idx: usize = 0;
             while (sample_idx < buffer.len) : (sample_idx += 1) {
-                buffer[sample_idx] = self.generateSample();
+                var sample = self.generateSample();
+
+                // Update fade per sample with cosine curve for smoother transition
+                if (self.fade_samples_remaining > 0) {
+                    const fade_progress = 1.0 - (@as(f32, @floatFromInt(self.fade_samples_remaining)) / @as(f32, @floatFromInt(FADE_DURATION_SAMPLES)));
+                    // Use cosine curve for smoother fade (0 to pi/2)
+                    const cosine_fade = 0.5 * (1.0 - std.math.cos(fade_progress * std.math.pi));
+                    // Check current state to determine fade direction
+                    const currently_enabled = self.enabled.load(.acquire);
+                    const currently_playing = self.playing.load(.acquire);
+                    if (currently_enabled and currently_playing) {
+                        // Fade in: cosine from 0 to 1
+                        self.fade_volume = cosine_fade;
+                    } else {
+                        // Fade out: cosine from 1 to 0
+                        self.fade_volume = 1.0 - cosine_fade;
+                    }
+                    self.fade_samples_remaining -= 1;
+                } else {
+                    // No fade active, set to final state
+                    const currently_enabled = self.enabled.load(.acquire);
+                    const currently_playing = self.playing.load(.acquire);
+                    self.fade_volume = if (currently_enabled and currently_playing) 1.0 else 0.0;
+                }
+
+                // Apply fade volume to prevent pops when muting/unmuting
+                // Ensure we write silence (0) when volume is 0 to avoid any residual audio
+                if (self.fade_volume <= 0.0) {
+                    buffer[sample_idx] = 0;
+                } else {
+                    sample = @intFromFloat(@as(f32, @floatFromInt(sample)) * self.fade_volume);
+                    buffer[sample_idx] = sample;
+                }
             }
             self.mutex.unlock();
 
@@ -366,13 +425,18 @@ pub const AudioPlayer = struct {
 
             while (frames_to_write > 0 and !self.should_stop.load(.acquire)) {
                 // Check if music is still enabled before writing
+                // But continue writing during fade-out to avoid pops
+                self.mutex.lock();
+                const fade_active_write = self.fade_samples_remaining > 0;
+                self.mutex.unlock();
                 const enabled_before_write = self.enabled.load(.acquire);
                 const playing_before_write = self.playing.load(.acquire);
-                if (!enabled_before_write or !playing_before_write) {
+                if ((!enabled_before_write or !playing_before_write) and !fade_active_write) {
+                    // Only stop if not fading (fade will handle the transition)
                     // std.debug.print("Audio: write stopped - enabled={}, playing={}\n", .{enabled_before_write, playing_before_write});
                     break;
                 }
-                
+
                 frames_written = c.snd_pcm_writei(handle, ptr, frames_to_write);
 
                 if (frames_written < 0) {
@@ -464,7 +528,7 @@ pub const AudioPlayer = struct {
             std.debug.print("Audio:   winecfg -> Audio -> Enable audio driver\n", .{});
             return;
         }
-        
+
         std.debug.print("Audio: waveOut device opened successfully\n", .{});
 
         // Initialize buffers
@@ -498,23 +562,47 @@ pub const AudioPlayer = struct {
         // Audio generation loop
         var last_enabled: bool = true;
         var last_playing: bool = true;
+        const FADE_DURATION_MS: u32 = 200; // 200ms fade for smoother transitions (increased to reduce popping)
+        const FADE_DURATION_SAMPLES: u32 = (FADE_DURATION_MS * SAMPLE_RATE) / 1000; // ~8820 samples at 44.1kHz
 
         while (!self.should_stop.load(.acquire)) {
             const enabled = self.enabled.load(.acquire);
             const playing = self.playing.load(.acquire);
 
+            // Handle fade transitions when muting/unmuting
             if (enabled != last_enabled or playing != last_playing) {
                 std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{ last_enabled, enabled, last_playing, playing });
-                last_enabled = enabled;
-                last_playing = playing;
+
                 self.mutex.lock();
+                if ((enabled and playing) and (!last_enabled or !last_playing)) {
+                    // Unmuting: start fade in and reset waveOut for clean start
+                    self.fade_samples_remaining = FADE_DURATION_SAMPLES;
+                    self.fade_volume = 0.0;
+                    // Reset waveOut to clear any stale buffers
+                    if (self.waveout_handle) |h| {
+                        _ = c.waveOutReset(h);
+                    }
+                } else if ((!enabled or !playing) and (last_enabled and last_playing)) {
+                    // Muting: start fade out (don't reset immediately - let fade complete)
+                    self.fade_samples_remaining = FADE_DURATION_SAMPLES;
+                    self.fade_volume = 1.0;
+                }
                 self.debug_wrote_after_toggle = false;
                 self.mutex.unlock();
+
+                last_enabled = enabled;
+                last_playing = playing;
             }
 
             if (!enabled or !playing) {
-                sleepMs(10);
-                continue;
+                // Still generate silence during fade-out to avoid pops
+                self.mutex.lock();
+                const fade_active = self.fade_samples_remaining > 0;
+                self.mutex.unlock();
+                if (!fade_active) {
+                    sleepMs(10);
+                    continue;
+                }
             }
 
             const enabled_after_sleep = self.enabled.load(.acquire);
@@ -539,21 +627,48 @@ pub const AudioPlayer = struct {
             const is_done = (header.dwFlags & c.WHDR_DONE) != 0;
             const is_in_queue = (header.dwFlags & c.WHDR_INQUEUE) != 0;
             const is_ready = is_done or !is_in_queue;
-            
+
             if (is_ready) {
-                // Generate audio samples into buffer
+                // Generate audio samples into buffer with per-sample fade
                 self.mutex.lock();
                 var sample_idx: usize = 0;
                 const buffer_len = self.waveout_buffer_data[current_idx].len / 2; // 16-bit samples
                 var samples: [4096]i16 = undefined;
                 while (sample_idx < buffer_len and sample_idx < samples.len) : (sample_idx += 1) {
-                    samples[sample_idx] = self.generateSample();
+                    var sample = self.generateSample();
+
+                    // Update fade per sample with cosine curve for smoother transition
+                    if (self.fade_samples_remaining > 0) {
+                        const fade_progress = 1.0 - (@as(f32, @floatFromInt(self.fade_samples_remaining)) / @as(f32, @floatFromInt(FADE_DURATION_SAMPLES)));
+                        // Use cosine curve for smoother fade (0 to pi/2)
+                        const cosine_fade = 0.5 * (1.0 - std.math.cos(fade_progress * std.math.pi));
+                        if (enabled and playing) {
+                            // Fade in: cosine from 0 to 1
+                            self.fade_volume = cosine_fade;
+                        } else {
+                            // Fade out: cosine from 1 to 0
+                            self.fade_volume = 1.0 - cosine_fade;
+                        }
+                        self.fade_samples_remaining -= 1;
+                    } else {
+                        // No fade active, set to final state
+                        self.fade_volume = if (enabled and playing) 1.0 else 0.0;
+                    }
+
+                    // Apply fade volume to prevent pops
+                    // Ensure we write silence (0) when volume is 0 to avoid any residual audio
+                    if (self.fade_volume <= 0.0) {
+                        samples[sample_idx] = 0;
+                    } else {
+                        sample = @intFromFloat(@as(f32, @floatFromInt(sample)) * self.fade_volume);
+                        samples[sample_idx] = sample;
+                    }
                 }
                 self.mutex.unlock();
 
                 // Copy samples to buffer (16-bit = 2 bytes per sample)
                 @memcpy(
-                    self.waveout_buffer_data[current_idx][0..sample_idx * 2],
+                    self.waveout_buffer_data[current_idx][0 .. sample_idx * 2],
                     std.mem.sliceAsBytes(samples[0..sample_idx]),
                 );
 
@@ -568,7 +683,7 @@ pub const AudioPlayer = struct {
                     sleepMs(10);
                     continue;
                 }
-                
+
                 // After successful write, the buffer should be in queue
                 // Check flags after a short delay to ensure it was queued
                 sleepMs(1);
@@ -617,7 +732,7 @@ pub const AudioPlayer = struct {
         // Get a local copy of the thread handle before joining
         // This avoids potential issues with accessing self.audio_thread
         const thread_to_join = self.audio_thread;
-        
+
         // Give the thread a moment to stop gracefully
         sleepMs(100);
 
@@ -734,7 +849,7 @@ pub const AudioPlayer = struct {
     pub fn setEnabled(self: *AudioPlayer, enabled: bool) void {
         const current = self.enabled.load(.acquire);
         if (current != enabled) {
-            std.debug.print("Audio: setEnabled() - {} -> {}\n", .{current, enabled});
+            std.debug.print("Audio: setEnabled() - {} -> {}\n", .{ current, enabled });
             self.enabled.store(enabled, .release);
             // Don't automatically set playing - let play()/stop() handle that
             // Only set playing to false if disabling, to stop immediately
