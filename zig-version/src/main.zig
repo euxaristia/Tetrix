@@ -107,7 +107,6 @@ pub fn main() !void {
         input.update(&game, delta_time, window, &music_enabled, &global_fullscreen, &global_window_width, &global_window_height);
         // Only update if input handler actually changed it (not for M key which uses toggle())
         if (music_enabled != audio.isEnabled()) {
-            std.debug.print("Main: music_enabled changed from input handler - {} -> {}\n", .{audio.isEnabled(), music_enabled});
             audio.setEnabled(music_enabled);
         }
 
@@ -186,9 +185,8 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
             },
             c.GLFW_KEY_M => {
                 if (global_audio) |audio| {
-                    std.debug.print("Main: M key pressed in callback, calling audio.toggle()\n", .{});
+                    std.debug.print("Main: M key pressed - toggling music\n", .{});
                     audio.toggle();
-                    std.debug.print("Main: After toggle in callback - enabled={}\n", .{audio.isEnabled()});
                 }
             },
             c.GLFW_KEY_F11 => {

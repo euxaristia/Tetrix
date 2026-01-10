@@ -258,9 +258,9 @@ pub const AudioPlayer = struct {
             const enabled = self.enabled.load(.acquire);
             const playing = self.playing.load(.acquire);
 
-            // Debug: Show audio state changes
+            // Debug: Show audio state changes (only when actually changing)
             if (enabled != last_enabled or playing != last_playing) {
-                std.debug.print("Audio: state changed - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
+                std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
                 last_enabled = enabled;
                 last_playing = playing;
                 // Reset debug flag on state change
@@ -302,8 +302,8 @@ pub const AudioPlayer = struct {
                 self.mutex.unlock();
             }
 
-            // Debug: Show when audio is actually playing
-            std.debug.print("Audio: Generating and writing audio (enabled={}, playing={})\n", .{enabled_after_sleep, playing_after_sleep});
+            // Debug: Show when audio is actually playing (only on state change to avoid spam)
+            // std.debug.print("Audio: Generating and writing audio (enabled={}, playing={})\n", .{enabled_after_sleep, playing_after_sleep});
 
             // Generate audio samples
             self.mutex.lock();
@@ -333,7 +333,7 @@ pub const AudioPlayer = struct {
                 const enabled_before_write = self.enabled.load(.acquire);
                 const playing_before_write = self.playing.load(.acquire);
                 if (!enabled_before_write or !playing_before_write) {
-                    std.debug.print("Audio: write stopped - enabled={}, playing={}\n", .{enabled_before_write, playing_before_write});
+                    // std.debug.print("Audio: write stopped - enabled={}, playing={}\n", .{enabled_before_write, playing_before_write});
                     break;
                 }
                 
@@ -372,7 +372,7 @@ pub const AudioPlayer = struct {
                     // Debug: Show that we're writing audio (only first time after state change)
                     self.mutex.lock();
                     if (written > 0 and !self.debug_wrote_after_toggle) {
-                        std.debug.print("Audio: Successfully wrote {d} frames to ALSA\n", .{written});
+                        std.debug.print("Audio: Successfully resumed playback - wrote {d} frames to ALSA\n", .{written});
                         self.debug_wrote_after_toggle = true;
                     }
                     // Reset flag when buffer is complete
@@ -436,12 +436,13 @@ pub const AudioPlayer = struct {
         // Only play if music is enabled (respect user's toggle)
         const enabled = self.enabled.load(.acquire);
         if (!enabled) {
-            std.debug.print("Audio: play() called but music is disabled, ignoring\n", .{});
+            // Don't spam - only print occasionally
+            // std.debug.print("Audio: play() called but music is disabled, ignoring\n", .{});
             return;
         }
         const current = self.playing.load(.acquire);
         if (!current) {
-            std.debug.print("Audio: play() called - playing={} -> true\n", .{current});
+            std.debug.print("Audio: play() - starting playback\n", .{});
             self.playing.store(true, .release);
         }
     }
@@ -449,7 +450,7 @@ pub const AudioPlayer = struct {
     pub fn stop(self: *AudioPlayer) void {
         const current = self.playing.load(.acquire);
         if (current) {
-            std.debug.print("Audio: stop() called - playing={} -> false\n", .{current});
+            std.debug.print("Audio: stop() - stopping playback\n", .{});
             self.playing.store(false, .release);
         }
     }
@@ -458,10 +459,9 @@ pub const AudioPlayer = struct {
         const current = self.enabled.load(.acquire);
         const current_playing = self.playing.load(.acquire);
         const new_state = !current;
-        std.debug.print("Audio: toggle() called - current enabled={}, playing={}, new enabled={}\n", .{ current, current_playing, new_state });
+        std.debug.print("Audio: toggle() - enabled: {} -> {}, playing: {} -> {}\n", .{ current, new_state, current_playing, new_state });
         self.enabled.store(new_state, .release);
         self.playing.store(new_state, .release);
-        std.debug.print("Audio: toggle() complete - enabled={}, playing={}\n", .{ self.enabled.load(.acquire), self.playing.load(.acquire) });
     }
 
     pub fn update(self: *AudioPlayer) void {
@@ -515,13 +515,12 @@ pub const AudioPlayer = struct {
     pub fn setEnabled(self: *AudioPlayer, enabled: bool) void {
         const current = self.enabled.load(.acquire);
         if (current != enabled) {
-            std.debug.print("Audio: setEnabled() called - {} -> {}\n", .{current, enabled});
+            std.debug.print("Audio: setEnabled() - {} -> {}\n", .{current, enabled});
             self.enabled.store(enabled, .release);
             // Don't automatically set playing - let play()/stop() handle that
             // Only set playing to false if disabling, to stop immediately
             if (!enabled) {
                 self.playing.store(false, .release);
-                std.debug.print("Audio: setEnabled() disabled, also set playing=false\n", .{});
             }
         }
     }
