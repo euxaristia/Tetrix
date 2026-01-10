@@ -3,7 +3,7 @@
 .vscode
 
 # Zig build artifacts
-zig-version/.zig-cache/
-zig-version/zig-out/
+.zig-cache/
+zig-out/
 simple_alsa_test
 test_audio

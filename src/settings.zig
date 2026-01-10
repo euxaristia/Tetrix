@@ -21,12 +21,17 @@ pub const Settings = struct {
         const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return settings;
         defer allocator.free(path);
 
+        std.debug.print("Loading from path: {s}\n", .{path});
+        std.debug.print("Decoded config_path: {s}\n", .{config_path});
+
         // Read file
         const file = std.fs.openFileAbsolute(path, .{}) catch return settings;
         defer file.close();
 
         const content = file.readToEndAlloc(allocator, 4096) catch return settings;
         defer allocator.free(content);
+
+        std.debug.print("Read file content: {s}\n", .{content});
 
         // Parse JSON manually (simple format)
         settings.parseJson(content);
