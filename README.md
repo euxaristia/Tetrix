@@ -1,20 +1,23 @@
-# Tetrix - A Swift Tetris Implementation
+# Tetrix
 
+![Zig](https://img.shields.io/badge/language-Zig-orange?style=for-the-badge&logo=zig)
+![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge)
 ![CI](https://github.com/euxaristia/Tetrix/actions/workflows/ci.yml/badge.svg)
 
-A complete Tetris game implementation written from scratch in Swift using SDL3. Works on Windows, Linux and macOS.
+A complete Tetris game implementation written from scratch in Zig using GLFW and OpenGL. Cross-platform support for Windows, Linux, and macOS.
 
 ## Features
 
-- All 7 classic Tetromino pieces (I, O, T, S, Z, J, L)
-- Smooth piece movement and rotation
-- Line clearing with scoring
-- Level progression (speed increases every 10 lines)
-- Hard drop functionality
-- Next piece preview
-- Pause/Resume functionality
-- Game over detection
-- Beautiful windowed interface with SDL3
+- 🎮 All 7 classic Tetromino pieces (I, O, T, S, Z, J, L)
+- ⚡ Smooth piece movement and rotation with wall kicks
+- 🎯 Line clearing with scoring and level progression
+- 🎵 Background music (Korobeiniki theme)
+- 👻 Ghost piece preview
+- 📊 High score tracking with obfuscation
+- 🎨 Beautiful OpenGL rendering
+- 🎮 Gamepad/controller support
+- 🔒 Compile-time string obfuscation (Tenebris)
 
 ## Game Controls
 
@@ -24,6 +27,8 @@ A complete Tetris game implementation written from scratch in Swift using SDL3. 
 - **W / Up Arrow (↑)**: Rotate piece clockwise
 - **Space**: Hard drop (instantly drop to bottom)
 - **ESC**: Pause/Resume the game
+- **M**: Toggle music
+- **F**: Toggle fullscreen
 - **Q**: Quit
 - **R**: Restart (when game over)
 
@@ -43,64 +48,104 @@ A complete Tetris game implementation written from scratch in Swift using SDL3. 
 
 ## Installation
 
+### Linux
+
+Install dependencies:
+```bash
+# Arch/CachyOS
+sudo pacman -S glfw alsa-lib
+
+# Ubuntu/Debian
+sudo apt-get install libglfw3-dev libasound2-dev
+```
+
+Build and run:
+```bash
+cd zig-version
+zig build run
+```
+
 ### Windows
 
-SDL3 libraries (`SDL3.dll`) and import libraries (`SDL3.lib`) are included in the project.
-
-### Linux (Arch/CachyOS)
-
-Install SDL3 development libraries:
+Cross-compile from Linux:
 ```bash
-sudo pacman -S sdl3
+./scripts/obfuscated_build.sh
 ```
 
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt-get install libsdl3-dev
-```
+The binary will be at `zig-version/zig-out/bin/tetrix.exe`
 
 ### macOS
 
 ```bash
-brew install sdl3
+brew install glfw
+cd zig-version
+zig build run
 ```
 
-## Running the Game
+## Building
 
+### Debug Build
 ```bash
-swift run
+cd zig-version
+zig build run
 ```
 
-Or build and run:
+### Release Build (Optimized)
 ```bash
-swift build
-./.build/debug/Tetrix
+cd zig-version
+zig build -Doptimize=ReleaseFast
+```
+
+### Obfuscated Windows Build
+```bash
+./scripts/obfuscated_build.sh
 ```
 
 ## Requirements
 
-- Swift 5.9+
-- SDL3 development libraries
-- Text rendering uses Swift-native implementations (no SDL3_ttf required)
+- Zig 0.15.2+
+- GLFW 3.4+ (system library on Linux/macOS, compiled from source for Windows)
+- OpenGL
+- ALSA (Linux only, for audio)
 
 ## Project Structure
 
-- `main.swift`: Application entry point
-- `SDL3Game.swift`: SDL3 game loop, rendering, and input handling
-- `Position.swift`: Coordinate system for board positions
-- `Tetromino.swift`: Tetromino piece definitions and rotations
-- `GameBoard.swift`: Game board logic and line clearing
-- `TetrisEngine.swift`: Main game engine and state management
-- `TetrisMusic.swift`: Background music implementation
-- `Sources/CSDL3/`: SDL3 C module wrapper
+```
+zig-version/
+├── src/
+│   ├── main.zig          # Application entry point
+│   ├── engine.zig        # Game engine and logic
+│   ├── board.zig         # Game board and line clearing
+│   ├── tetromino.zig     # Tetromino definitions
+│   ├── renderer.zig      # OpenGL rendering
+│   ├── input.zig         # Input handling
+│   ├── audio.zig         # ALSA audio playback
+│   ├── settings.zig      # Settings and high score management
+│   └── tenebris.zig     # Compile-time obfuscation utilities
+├── build.zig             # Build configuration
+└── build.zig.zon        # Package dependencies
+```
+
+## High Score Storage
+
+High scores are stored in `~/.config/tetrix.json` with obfuscation to prevent casual tampering. The file format:
+
+```json
+{
+  "highScore": "HS2654435869",
+  "musicEnabled": true,
+  "isFullscreen": false
+}
+```
 
 ## Notes
 
-- The game uses SDL3 for cross-platform windowed graphics (Windows/macOS use native graphics, Linux uses SDL3)
-- Text rendering uses Swift-native implementations (Windows: GDI, macOS: Core Text, Linux: Bitmap font)
-- The game runs at up to 180 FPS (180 Hz) in release builds
-- Supports gamepad/controller input
+- The game uses GLFW for cross-platform windowing and input
+- OpenGL for rendering (hardware-accelerated)
+- ALSA for audio on Linux (DirectSound/WASAPI on Windows, CoreAudio on macOS)
+- Compile-time string obfuscation via Tenebris module
+- Windows builds include GLFW compiled from source
+- Supports gamepad/controller input via GLFW joystick API
 
 ## License
 
