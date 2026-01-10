@@ -113,8 +113,10 @@ pub fn main() !void {
 
         // Update audio
         if (game.state == .playing) {
+            // std.debug.print("Game state: PLAYING - enabling audio\n", .{});
             audio.play();
         } else {
+            // std.debug.print("Game state: NOT PLAYING - disabling audio\n", .{});
             audio.stop();
         }
         audio.update();

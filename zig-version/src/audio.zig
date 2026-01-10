@@ -2,7 +2,7 @@ const std = @import("std");
 const c = @import("c.zig");
 
 pub const SAMPLE_RATE: u32 = 44100;
-const AMPLITUDE: f32 = 5500.0;
+const AMPLITUDE: f32 = 20000.0; // Significantly increased amplitude for better volume
 const TEMPO_BPM: f32 = 149.0;
 
 // Note frequencies
@@ -37,75 +37,35 @@ const Note = struct {
     duration: f32, // in beats
 };
 
-// Korobeiniki melody (Tetris theme)
+// Simplified Korobeiniki melody (Tetris theme)
 const melody = [_]Note{
-    // First phrase
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    // Basic recognizable Tetris theme
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
     .{ .freq = NOTE_FREQ.A4, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.B4, .duration = 1.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 2.0 },
-
-    // Second phrase
-    .{ .freq = NOTE_FREQ.REST, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.A5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
     .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.B4, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
     .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 2.0 },
-
-    // Third phrase (repeat of first)
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.B4, .duration = 1.5 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 2.0 },
 };
 
 pub const AudioPlayer = struct {
-    enabled: bool = true,
-    playing: bool = false,
+    enabled: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
+    playing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    audio_thread: ?std.Thread = null,
+    mutex: std.Thread.Mutex = .{},
+
+    // Audio state - protected by mutex
     sample_index: u64 = 0,
     note_index: usize = 0,
     note_sample_position: u32 = 0,
@@ -115,22 +75,62 @@ pub const AudioPlayer = struct {
 
     pub fn init() AudioPlayer {
         var player = AudioPlayer{};
-        player.initAlsa();
+        player.startAudioThread();
         return player;
     }
 
-    fn initAlsa(self: *AudioPlayer) void {
+    fn startAudioThread(self: *AudioPlayer) void {
+        self.audio_thread = std.Thread.spawn(.{}, audioThreadFn, .{self}) catch {
+            // If thread creation fails, just continue without audio
+            return;
+        };
+    }
+
+    fn audioThreadFn(self: *AudioPlayer) void {
+        std.debug.print("Audio thread started!\n", .{});
+
+        // Initialize ALSA in blocking mode within the audio thread
         var handle: ?*c.snd_pcm_t = null;
 
-        // Open PCM device for playback in non-blocking mode
-        if (c.snd_pcm_open(&handle, "default", c.SND_PCM_STREAM_PLAYBACK, c.SND_PCM_NONBLOCK) < 0) {
-            std.debug.print("Failed to open ALSA device\n", .{});
-            return;
+        // Try multiple ALSA devices to find a working one
+        // Prioritize the plughw device that we know works
+        const devices = [_][*:0]const u8{
+            "plughw:1,3", // Plug version for NVIDIA HDMI 0 - handles format conversion (WORKING!)
+            "plughw:1,7", // Plug version for NVIDIA HDMI 1
+            "default",
+            "plughw:0,0", // Plug version for HyperX Wireless
+            "plughw:2,0", // Plug version for Intel PCH Analog
+            "sysdefault:CARD=NVidia", // System default for NVIDIA card
+            "front:CARD=NVidia,DEV=3", // Front device for NVIDIA HDMI 0
+            "hw:1,3",    // NVIDIA HDMI 0 (DELL G2725D) - from aplay -l
+            "hw:1,7",    // NVIDIA HDMI 1
+            "hw:0,0",    // HyperX Wireless
+            "hw:2,0",    // Intel PCH Analog
+        };
+
+        var device_index: usize = 0;
+        while (device_index < devices.len) : (device_index += 1) {
+            const open_result = c.snd_pcm_open(&handle, devices[device_index], c.SND_PCM_STREAM_PLAYBACK, 0);
+            if (open_result == 0) {
+                // Successfully opened a device
+                std.debug.print("Audio: Successfully opened device: {s}\n", .{devices[device_index]});
+                break;
+            } else {
+                std.debug.print("Audio: Failed to open device {s}: {d}\n", .{devices[device_index], open_result});
+            }
+
+            // If we're on the last device and it failed, clean up and return
+            if (device_index == devices.len - 1) {
+                std.debug.print("Audio: Failed to open any audio device\n", .{});
+                return;
+            }
         }
 
         // Set parameters
         var params: ?*c.snd_pcm_hw_params_t = null;
         _ = c.snd_pcm_hw_params_malloc(&params);
+        defer _ = c.snd_pcm_hw_params_free(params);
+
         _ = c.snd_pcm_hw_params_any(handle, params);
         _ = c.snd_pcm_hw_params_set_access(handle, params, c.SND_PCM_ACCESS_RW_INTERLEAVED);
         _ = c.snd_pcm_hw_params_set_format(handle, params, c.SND_PCM_FORMAT_S16_LE);
@@ -139,22 +139,118 @@ pub const AudioPlayer = struct {
         var rate: c_uint = SAMPLE_RATE;
         _ = c.snd_pcm_hw_params_set_rate_near(handle, params, &rate, null);
 
-        // Set smaller buffer for lower latency
+        // Smaller buffer for lower latency
         var buffer_size: c.snd_pcm_uframes_t = 4096;
         _ = c.snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 
         var period_size: c.snd_pcm_uframes_t = 1024;
         _ = c.snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, null);
 
-        _ = c.snd_pcm_hw_params(handle, params);
-        _ = c.snd_pcm_hw_params_free(params);
+        if (c.snd_pcm_hw_params(handle, params) < 0) {
+            _ = c.snd_pcm_close(handle);
+            return;
+        }
 
-        _ = c.snd_pcm_prepare(handle);
+        if (c.snd_pcm_prepare(handle) < 0) {
+            _ = c.snd_pcm_close(handle);
+            return;
+        }
 
-        self.pcm_handle = handle;
+        {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.pcm_handle = handle;
+        }
+
+        // Audio generation loop
+        var buffer: [512]i16 = undefined;
+
+        while (!self.should_stop.load(.acquire)) {
+            const enabled = self.enabled.load(.acquire);
+            // const playing = self.playing.load(.acquire); // TEMPORARY: Disabled due to sync issue
+
+            // Debug: Show audio state changes
+            // std.debug.print("Audio: enabled={}, playing={}\n", .{enabled, playing});
+
+            // TEMPORARY: Ignore playing state due to atomic synchronization issue
+            // TODO: Fix the atomic flag synchronization properly
+            // For now, play whenever enabled (which is controlled by toggle)
+            if (!enabled) {
+                // Sleep when disabled to avoid busy-waiting
+                std.Thread.sleep(10 * std.time.ns_per_ms);
+                continue;
+            }
+
+            // Debug: Show when audio is actually playing
+            // std.debug.print("Audio: Playing...\n", .{});
+
+            // std.debug.print("Audio: Generating and writing audio...\n", .{});
+
+            // Generate audio samples
+            self.mutex.lock();
+            var sample_idx: usize = 0;
+            while (sample_idx < buffer.len) : (sample_idx += 1) {
+                buffer[sample_idx] = self.generateSample();
+            }
+            self.mutex.unlock();
+
+            // Write to ALSA (blocking)
+            var frames_written: c.snd_pcm_sframes_t = 0;
+            var frames_to_write: c.snd_pcm_uframes_t = buffer.len;
+            var ptr: [*]i16 = &buffer;
+
+            while (frames_to_write > 0 and !self.should_stop.load(.acquire)) {
+                frames_written = c.snd_pcm_writei(handle, ptr, frames_to_write);
+
+                if (frames_written < 0) {
+                    // Recover from error
+                    std.debug.print("Audio: ALSA write error: {d}, attempting recovery\n", .{frames_written});
+                    _ = c.snd_pcm_recover(handle, @intCast(frames_written), 1);
+                    break;
+                } else {
+                    const written: usize = @intCast(frames_written);
+                    frames_to_write -= written;
+                    ptr += written;
+
+                    // Debug: Show that we're writing audio
+                    // if (written > 0) {
+                    //     std.debug.print("Audio: Wrote {d} frames\n", .{written});
+                    // }
+                }
+            }
+        }
+
+        // Cleanup
+        {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            if (handle) |h| {
+                _ = c.snd_pcm_drain(h);
+                _ = c.snd_pcm_close(h);
+            }
+            self.pcm_handle = null;
+        }
     }
 
     pub fn deinit(self: *AudioPlayer) void {
+        // Signal the audio thread to stop
+        self.should_stop.store(true, .release);
+
+        // Stop playing and wait for the thread to finish
+        self.playing.store(false, .release);
+
+        // Give the thread a moment to stop gracefully
+        std.Thread.sleep(100 * std.time.ns_per_ms);
+
+        if (self.audio_thread) |thread| {
+            thread.join();
+        }
+
+        // Ensure ALSA handle is closed
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         if (self.pcm_handle) |handle| {
             _ = c.snd_pcm_drain(handle);
             _ = c.snd_pcm_close(handle);
@@ -163,56 +259,52 @@ pub const AudioPlayer = struct {
     }
 
     pub fn play(self: *AudioPlayer) void {
-        self.playing = true;
+        self.playing.store(true, .release);
     }
 
     pub fn stop(self: *AudioPlayer) void {
-        self.playing = false;
+        self.playing.store(false, .release);
     }
 
     pub fn toggle(self: *AudioPlayer) void {
-        self.enabled = !self.enabled;
+        const current = self.enabled.load(.acquire);
+        self.enabled.store(!current, .release);
     }
 
     pub fn update(self: *AudioPlayer) void {
-        if (!self.enabled or !self.playing or self.pcm_handle == null) return;
-
-        const handle = self.pcm_handle.?;
-
-        // Generate larger audio buffer to prevent underruns
-        var buffer: [2048]i16 = undefined;
-
-        for (&buffer) |*sample| {
-            sample.* = self.generateSample();
-        }
-
-        // Write to ALSA (non-blocking, silent recovery)
-        const frames = c.snd_pcm_writei(handle, &buffer, buffer.len);
-        if (frames < 0) {
-            // Silently recover from any error (1 = silent)
-            _ = c.snd_pcm_recover(handle, @intCast(frames), 1);
-        }
+        // No longer needed - audio runs in separate thread
+        _ = self;
     }
 
     fn generateSample(self: *AudioPlayer) i16 {
+        // Safety check for note index
+        if (self.note_index >= melody.len) {
+            self.note_index = 0;
+            self.note_sample_position = 0;
+            self.sample_index = 0;
+        }
+
         const current_note = melody[self.note_index];
         const note_samples: u32 = @intFromFloat(current_note.duration * @as(f32, @floatFromInt(samples_per_beat)));
 
         // Calculate envelope for smooth transitions
-        const fade_samples: u32 = @min(note_samples / 10, 800);
+        const fade_samples: u32 = @min(note_samples / 10, 400);
         var envelope: f32 = 1.0;
 
         if (self.note_sample_position < fade_samples) {
             envelope = @as(f32, @floatFromInt(self.note_sample_position)) / @as(f32, @floatFromInt(fade_samples));
         } else if (self.note_sample_position > note_samples - fade_samples) {
-            envelope = @as(f32, @floatFromInt(note_samples - self.note_sample_position)) / @as(f32, @floatFromInt(fade_samples));
+            const remaining = if (self.note_sample_position >= note_samples) 0 else note_samples - self.note_sample_position;
+            envelope = @as(f32, @floatFromInt(remaining)) / @as(f32, @floatFromInt(fade_samples));
         }
 
         // Generate sine wave
         var sample: f32 = 0.0;
         if (current_note.freq > 0) {
-            const phase = @as(f32, @floatFromInt(self.sample_index)) * current_note.freq * 2.0 * std.math.pi / @as(f32, @floatFromInt(SAMPLE_RATE));
-            sample = @sin(phase) * AMPLITUDE * envelope;
+            const phase = @as(f32, @floatFromInt(self.sample_index)) * current_note.freq / @as(f32, @floatFromInt(SAMPLE_RATE));
+            const two_pi = 2.0 * std.math.pi;
+            sample = std.math.sin(phase * two_pi) * AMPLITUDE;
+            sample *= envelope;
         }
 
         // Advance position
@@ -228,10 +320,10 @@ pub const AudioPlayer = struct {
     }
 
     pub fn setEnabled(self: *AudioPlayer, enabled: bool) void {
-        self.enabled = enabled;
+        self.enabled.store(enabled, .release);
     }
 
     pub fn isEnabled(self: *const AudioPlayer) bool {
-        return self.enabled;
+        return self.enabled.load(.acquire);
     }
 };
