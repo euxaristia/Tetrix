@@ -17,6 +17,7 @@ pub const Settings = struct {
 
         // Build full path
         const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return settings;
+        defer allocator.free(path);
 
         // Read file
         const file = std.fs.openFileAbsolute(path, .{}) catch return settings;

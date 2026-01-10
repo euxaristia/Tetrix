@@ -297,7 +297,17 @@ pub const AudioPlayer = struct {
                 frames_written = c.snd_pcm_writei(handle, ptr, frames_to_write);
 
                 if (frames_written < 0) {
-                    // Recover from error
+                    // Check if we're shutting down - if so, break silently
+                    if (self.should_stop.load(.acquire)) {
+                        // Expected shutdown, break silently
+                        break;
+                    }
+                    // EPIPE (-32) can happen during shutdown, but also check should_stop
+                    if (frames_written == -32) {
+                        // EPIPE - broken pipe, likely shutdown
+                        break;
+                    }
+                    // For other errors, try recovery
                     std.debug.print("Audio: ALSA write error: {d}, attempting recovery\n", .{frames_written});
                     _ = c.snd_pcm_recover(handle, @intCast(frames_written), 1);
                     break;
@@ -320,6 +330,7 @@ pub const AudioPlayer = struct {
             defer self.mutex.unlock();
 
             if (handle) |h| {
+                // Drain and close - errors are expected if already closed
                 _ = c.snd_pcm_drain(h);
                 _ = c.snd_pcm_close(h);
             }
@@ -349,11 +360,12 @@ pub const AudioPlayer = struct {
             std.debug.print("Audio: deinit called but audio_thread was null\n", .{});
         }
 
-        // Ensure ALSA handle is closed
+        // Ensure ALSA handle is closed (may already be closed by thread)
         self.mutex.lock();
         defer self.mutex.unlock();
 
         if (self.pcm_handle) |handle| {
+            // Drain and close - errors are expected if already closed by thread
             _ = c.snd_pcm_drain(handle);
             _ = c.snd_pcm_close(handle);
             self.pcm_handle = null;
