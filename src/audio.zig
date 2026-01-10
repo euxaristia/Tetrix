@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const c = @import("c.zig");
 
 pub const SAMPLE_RATE: u32 = 44100;
@@ -160,6 +161,13 @@ pub const AudioPlayer = struct {
 
     fn audioThreadFn(self: *AudioPlayer) void {
         std.debug.print("Audio thread started!\n", .{});
+
+        // Audio is only supported on Linux (ALSA)
+        // On Windows, ALSA functions are stubbed and will fail silently
+        if (builtin.target.os.tag != .linux) {
+            std.debug.print("Audio: Not supported on this platform (only Linux/ALSA is supported)\n", .{});
+            return;
+        }
 
         // Initialize ALSA in blocking mode within the audio thread
         var handle: ?*c.snd_pcm_t = null;
