@@ -16,11 +16,9 @@ fn sleepMs(ms: u64) void {
         std.posix.nanosleep(0, delay_ns);
     }
 }
-// Platform-specific amplitude: Windows needs lower volume, Linux needs higher
-const AMPLITUDE: f32 = if (@import("builtin").target.os.tag == .windows) 
-    8000.0  // Quieter for Windows
-else 
-    15000.0; // Louder for Linux/ALSA
+// Consistent amplitude across platforms for uniform volume level
+// This value (10000.0) provides good volume representation on both Windows and Linux
+const AMPLITUDE: f32 = 10000.0;
 const TEMPO_BPM: f32 = 149.0;
 
 // Note frequencies (matching Swift version)
