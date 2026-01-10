@@ -119,28 +119,22 @@ pub const GameBoard = struct {
 
     fn clearLines(self: *GameBoard) void {
         // Remove cleared lines and shift everything down
-        var write_row: usize = BOARD_HEIGHT - 1;
-        var read_row: i32 = @intCast(BOARD_HEIGHT - 1);
+        var write_row: i32 = BOARD_HEIGHT - 1;
+        var read_row: i32 = BOARD_HEIGHT - 1;
 
         while (read_row >= 0) : (read_row -= 1) {
             const r: usize = @intCast(read_row);
             if (!self.clearing_lines[r]) {
-                if (write_row != r) {
-                    self.cells[write_row] = self.cells[r];
+                if (write_row != read_row) {
+                    self.cells[@intCast(write_row)] = self.cells[r];
                 }
-                if (write_row > 0) {
-                    write_row -= 1;
-                }
+                write_row -= 1;
             }
         }
 
         // Fill remaining top rows with empty cells
-        while (write_row < BOARD_HEIGHT) : (write_row += 1) {
-            if (write_row >= BOARD_HEIGHT) break;
-            self.cells[write_row] = [_]Cell{.{}} ** BOARD_WIDTH;
-            if (write_row == 0) break;
-            write_row -%= 1;
-            write_row +%= 1;
+        while (write_row >= 0) : (write_row -= 1) {
+            self.cells[@intCast(write_row)] = [_]Cell{.{}} ** BOARD_WIDTH;
         }
 
         // Reset clearing state

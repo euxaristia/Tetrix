@@ -122,8 +122,8 @@ pub const AudioPlayer = struct {
     fn initAlsa(self: *AudioPlayer) void {
         var handle: ?*c.snd_pcm_t = null;
 
-        // Open PCM device for playback
-        if (c.snd_pcm_open(&handle, "default", c.SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+        // Open PCM device for playback in non-blocking mode
+        if (c.snd_pcm_open(&handle, "default", c.SND_PCM_STREAM_PLAYBACK, c.SND_PCM_NONBLOCK) < 0) {
             std.debug.print("Failed to open ALSA device\n", .{});
             return;
         }
@@ -138,6 +138,13 @@ pub const AudioPlayer = struct {
 
         var rate: c_uint = SAMPLE_RATE;
         _ = c.snd_pcm_hw_params_set_rate_near(handle, params, &rate, null);
+
+        // Set smaller buffer for lower latency
+        var buffer_size: c.snd_pcm_uframes_t = 4096;
+        _ = c.snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
+
+        var period_size: c.snd_pcm_uframes_t = 1024;
+        _ = c.snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, null);
 
         _ = c.snd_pcm_hw_params(handle, params);
         _ = c.snd_pcm_hw_params_free(params);
@@ -172,17 +179,20 @@ pub const AudioPlayer = struct {
 
         const handle = self.pcm_handle.?;
 
-        // Generate audio buffer
-        var buffer: [1024]i16 = undefined;
+        // Generate audio buffer (smaller for lower latency)
+        var buffer: [256]i16 = undefined;
 
         for (&buffer) |*sample| {
             sample.* = self.generateSample();
         }
 
-        // Write to ALSA
+        // Write to ALSA (non-blocking)
         const frames = c.snd_pcm_writei(handle, &buffer, buffer.len);
         if (frames < 0) {
-            _ = c.snd_pcm_recover(handle, @intCast(frames), 0);
+            // EAGAIN means buffer is full, just skip this update
+            if (frames != -11) { // -11 is EAGAIN
+                _ = c.snd_pcm_recover(handle, @intCast(frames), 0);
+            }
         }
     }
 

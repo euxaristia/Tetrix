@@ -91,3 +91,7 @@ pub const snd_pcm_hw_params = c_bindings.snd_pcm_hw_params;
 pub const SND_PCM_STREAM_PLAYBACK = c_bindings.SND_PCM_STREAM_PLAYBACK;
 pub const SND_PCM_ACCESS_RW_INTERLEAVED = c_bindings.SND_PCM_ACCESS_RW_INTERLEAVED;
 pub const SND_PCM_FORMAT_S16_LE = c_bindings.SND_PCM_FORMAT_S16_LE;
+pub const SND_PCM_NONBLOCK = c_bindings.SND_PCM_NONBLOCK;
+pub const snd_pcm_uframes_t = c_bindings.snd_pcm_uframes_t;
+pub const snd_pcm_hw_params_set_buffer_size_near = c_bindings.snd_pcm_hw_params_set_buffer_size_near;
+pub const snd_pcm_hw_params_set_period_size_near = c_bindings.snd_pcm_hw_params_set_period_size_near;

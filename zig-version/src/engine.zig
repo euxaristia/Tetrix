@@ -27,7 +27,7 @@ pub const TetrisEngine = struct {
     level: u32,
     drop_timer: f64,
     drop_interval: f64,
-    rng: std.Random,
+    prng: std.Random.DefaultPrng,
     pending_lines: u32, // Lines waiting to be scored after animation
 
     const SPAWN_X: i32 = 4;
@@ -36,14 +36,11 @@ pub const TetrisEngine = struct {
     const MIN_DROP_INTERVAL: f64 = 0.1;
 
     pub fn init(seed: u64) TetrisEngine {
-        var prng = std.Random.DefaultPrng.init(seed);
-        var rng = prng.random();
-
         var engine = TetrisEngine{
             .game_board = GameBoard.init(),
             .current_piece = null,
-            .next_piece = TetrominoType.random(&rng),
-            .next_next_piece = TetrominoType.random(&rng),
+            .next_piece = .I, // temporary, will be set below
+            .next_next_piece = .I, // temporary, will be set below
             .state = .playing,
             .score = 0,
             .high_score = 0,
@@ -51,19 +48,27 @@ pub const TetrisEngine = struct {
             .level = 1,
             .drop_timer = 0,
             .drop_interval = BASE_DROP_INTERVAL,
-            .rng = rng,
+            .prng = std.Random.DefaultPrng.init(seed),
             .pending_lines = 0,
         };
 
+        // Now generate random pieces using the stored prng
+        engine.next_piece = engine.randomPiece();
+        engine.next_next_piece = engine.randomPiece();
         engine.spawnNewPiece();
         return engine;
+    }
+
+    fn randomPiece(self: *TetrisEngine) TetrominoType {
+        const val = self.prng.random().intRangeAtMost(u8, 0, 6);
+        return @enumFromInt(val);
     }
 
     pub fn reset(self: *TetrisEngine) void {
         self.game_board.reset();
         self.current_piece = null;
-        self.next_piece = TetrominoType.random(&self.rng);
-        self.next_next_piece = TetrominoType.random(&self.rng);
+        self.next_piece = self.randomPiece();
+        self.next_next_piece = self.randomPiece();
         self.state = .playing;
         self.score = 0;
         self.lines_cleared = 0;
@@ -112,7 +117,7 @@ pub const TetrisEngine = struct {
 
         self.current_piece = new_piece;
         self.next_piece = self.next_next_piece;
-        self.next_next_piece = TetrominoType.random(&self.rng);
+        self.next_next_piece = self.randomPiece();
     }
 
     fn lockPiece(self: *TetrisEngine) void {
