@@ -258,6 +258,9 @@ pub const AudioPlayer = struct {
             const enabled = self.enabled.load(.acquire);
             const playing = self.playing.load(.acquire);
 
+            // Check if we're resuming playback (before updating last_playing)
+            const is_resuming = (enabled and playing) and (!last_enabled or !last_playing);
+            
             // Debug: Show audio state changes (only when actually changing)
             if (enabled != last_enabled or playing != last_playing) {
                 std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
@@ -288,7 +291,7 @@ pub const AudioPlayer = struct {
             }
 
             // If we're resuming playback after being stopped, prepare ALSA handle
-            if (enabled_after_sleep and playing_after_sleep and !last_playing) {
+            if (is_resuming) {
                 std.debug.print("Audio: Resuming playback, preparing ALSA handle\n", .{});
                 self.mutex.lock();
                 if (self.pcm_handle) |h| {
