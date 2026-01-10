@@ -3,6 +3,7 @@ const c = @import("c.zig");
 const tetromino = @import("tetromino.zig");
 const board = @import("board.zig");
 const engine = @import("engine.zig");
+const tenebris = @import("tenebris.zig");
 
 const Position = tetromino.Position;
 const Color = tetromino.Color;
@@ -368,7 +369,9 @@ pub const Renderer = struct {
 
         // PAUSED text (centered) - 6 chars * 15 pixels / 2 = 45
         self.setColor(Color{ .r = 255, .g = 255, .b = 0 });
-        const text = "PAUSED";
+        const paused_obf = tenebris.ObfuscatedString.init("PAUSED", tenebris.Tenebris.DEFAULT_KEY);
+        var paused_buf: [16]u8 = undefined;
+        const text = paused_obf.value(&paused_buf);
         const text_x = PADDING + BOARD_PIXEL_WIDTH / 2 - 45;
         const text_y = PADDING + BOARD_PIXEL_HEIGHT / 2 - 20;
         self.drawTextLarge(text, text_x, text_y);
@@ -396,7 +399,9 @@ pub const Renderer = struct {
 
         // GAME OVER text - 9 chars * 15 pixels / 2 = 67
         self.setColor(Color{ .r = 255, .g = 0, .b = 0 });
-        const text = "GAME OVER";
+        const game_over_obf = tenebris.ObfuscatedString.init("GAME OVER", tenebris.Tenebris.DEFAULT_KEY);
+        var game_over_buf: [16]u8 = undefined;
+        const text = game_over_obf.value(&game_over_buf);
         const text_x = PADDING + BOARD_PIXEL_WIDTH / 2 - 67;
         const text_y = box_y + 15;
         self.drawTextLarge(text, text_x, text_y);

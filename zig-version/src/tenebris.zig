@@ -3,7 +3,7 @@ const std = @import("std");
 /// Tenebris - Compile-time obfuscation utilities
 /// This module provides obfuscation helpers that make reverse engineering harder
 pub const Tenebris = struct {
-    const DEFAULT_KEY: u8 = 0x42; // Same default key as Swift version
+    pub const DEFAULT_KEY: u8 = 0x42; // Same default key as Swift version
 
     /// Obfuscated string decoder - strings are XOR encoded at compile time
     /// Equivalent to Swift's Tenebris.decode()

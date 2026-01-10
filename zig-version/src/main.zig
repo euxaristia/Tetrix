@@ -5,6 +5,7 @@ const renderer_mod = @import("renderer.zig");
 const input_mod = @import("input.zig");
 const audio_mod = @import("audio.zig");
 const settings_mod = @import("settings.zig");
+const tenebris = @import("tenebris.zig");
 
 const TetrisEngine = engine_mod.TetrisEngine;
 const GameState = engine_mod.GameState;
@@ -42,8 +43,15 @@ pub fn main() !void {
     }
     defer c.glfwTerminate();
 
-    // Create window
-    const window = c.glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Tetrix", null, null);
+    // Create window (decode obfuscated window title)
+    const window_title_obf = tenebris.ObfuscatedString.init("Tetrix", tenebris.Tenebris.DEFAULT_KEY);
+    var title_buf: [32]u8 = undefined;
+    const window_title_slice = window_title_obf.value(&title_buf);
+    // GLFW needs null-terminated C string
+    var title_cstr: [32:0]u8 = undefined;
+    @memset(&title_cstr, 0);
+    @memcpy(title_cstr[0..window_title_slice.len], window_title_slice);
+    const window = c.glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, &title_cstr, null, null);
     if (window == null) {
         std.debug.print("Failed to create window\n", .{});
         return;

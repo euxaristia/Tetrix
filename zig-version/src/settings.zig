@@ -1,11 +1,10 @@
 const std = @import("std");
+const tenebris = @import("tenebris.zig");
 
 pub const Settings = struct {
     high_score: u32 = 0,
     music_enabled: bool = true,
     is_fullscreen: bool = false,
-
-    const config_path = ".config/tetrix.json";
     const obfuscation_constant: u32 = 0x9E3779B9; // Golden ratio constant (same as DaniSnek)
 
     pub fn load(allocator: std.mem.Allocator) Settings {
@@ -15,7 +14,10 @@ pub const Settings = struct {
         const home = std.process.getEnvVarOwned(allocator, "HOME") catch return settings;
         defer allocator.free(home);
 
-        // Build full path
+        // Build full path (decode obfuscated config path)
+        const config_path_obf = tenebris.ObfuscatedString.init(".config/tetrix.json", tenebris.Tenebris.DEFAULT_KEY);
+        var config_path_buf: [64]u8 = undefined;
+        const config_path = config_path_obf.value(&config_path_buf);
         const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return settings;
         defer allocator.free(path);
 
@@ -106,7 +108,10 @@ pub const Settings = struct {
 
         std.fs.makeDirAbsolute(config_dir) catch {};
 
-        // Build full path
+        // Build full path (decode obfuscated config path)
+        const config_path_obf = tenebris.ObfuscatedString.init(".config/tetrix.json", tenebris.Tenebris.DEFAULT_KEY);
+        var config_path_buf: [64]u8 = undefined;
+        const config_path = config_path_obf.value(&config_path_buf);
         const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return;
         defer allocator.free(path);
 
@@ -133,16 +138,28 @@ pub const Settings = struct {
     fn obfuscateHighScore(self: *const Settings, score: u32, buf: []u8) []const u8 {
         _ = self;
         const obfuscated = score +% obfuscation_constant; // Wrap on overflow
-        const result = std.fmt.bufPrint(buf, "HS{d}", .{obfuscated}) catch "HS0";
+        // Decode obfuscated "HS" prefix
+        const hs_prefix_obf = tenebris.ObfuscatedString.init("HS", tenebris.Tenebris.DEFAULT_KEY);
+        var hs_prefix_buf: [8]u8 = undefined;
+        const hs_prefix = hs_prefix_obf.value(&hs_prefix_buf);
+        const result = std.fmt.bufPrint(buf, "{s}{d}", .{ hs_prefix, obfuscated }) catch {
+            // Fallback if buffer too small
+            var fallback_buf: [8]u8 = undefined;
+            const fallback_prefix = hs_prefix_obf.value(&fallback_buf);
+            return std.fmt.bufPrint(buf, "{s}0", .{fallback_prefix}) catch "HS0";
+        };
         return result;
     }
 
     // Deobfuscate high score
     fn deobfuscateHighScore(self: *Settings, obfuscated: []const u8) u32 {
         _ = self;
-        // Check for "HS" prefix
-        if (std.mem.startsWith(u8, obfuscated, "HS")) {
-            const score_str = obfuscated[2..];
+        // Check for obfuscated "HS" prefix
+        const hs_prefix_obf = tenebris.ObfuscatedString.init("HS", tenebris.Tenebris.DEFAULT_KEY);
+        var hs_prefix_buf: [8]u8 = undefined;
+        const hs_prefix = hs_prefix_obf.value(&hs_prefix_buf);
+        if (std.mem.startsWith(u8, obfuscated, hs_prefix)) {
+            const score_str = obfuscated[hs_prefix.len..];
             const obfuscated_int = std.fmt.parseInt(u32, score_str, 10) catch return 0;
             // Handle potential underflow with wrapping subtraction
             if (obfuscated_int >= obfuscation_constant) {
