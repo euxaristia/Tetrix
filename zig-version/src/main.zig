@@ -183,7 +183,9 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
             },
             c.GLFW_KEY_M => {
                 if (global_audio) |audio| {
+                    std.debug.print("Main: M key pressed in callback, calling audio.toggle()\n", .{});
                     audio.toggle();
+                    std.debug.print("Main: After toggle in callback - enabled={}\n", .{audio.isEnabled()});
                 }
             },
             c.GLFW_KEY_F11 => {
