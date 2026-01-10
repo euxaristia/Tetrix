@@ -35,6 +35,13 @@ pub fn main() !void {
 
     // Load settings
     var settings = Settings.load(allocator);
+    std.debug.print("Loaded high score from file: {d}\n", .{settings.high_score});
+    
+    // Initialize game components
+    const seed = @as(u64, @intCast(std.time.milliTimestamp()));
+    var game = TetrisEngine.init(seed);
+    game.setHighScore(settings.high_score);
+    std.debug.print("Set game.high_score to: {d}\n", .{game.high_score});
 
     // Initialize GLFW
     if (c.glfwInit() == 0) {
@@ -63,11 +70,6 @@ pub fn main() !void {
 
     // Setup OpenGL
     setupGL();
-
-    // Initialize game components
-    const seed = @as(u64, @intCast(std.time.milliTimestamp()));
-    var game = TetrisEngine.init(seed);
-    game.setHighScore(settings.high_score);
 
     var renderer = Renderer.init();
     var input = InputHandler.init();
@@ -143,14 +145,27 @@ pub fn main() !void {
 
         // Update high score if needed
         if (game.score > settings.high_score) {
+            std.debug.print("Updating high score: {d} -> {d}\n", .{ settings.high_score, game.score });
             settings.high_score = game.score;
             settings.save(allocator);
+        }
+        
+        // Also sync game.high_score with settings.high_score (in case game.high_score was updated elsewhere)
+        if (settings.high_score > game.high_score) {
+            std.debug.print("Syncing game.high_score: {d} -> {d}\n", .{ game.high_score, settings.high_score });
+            game.setHighScore(settings.high_score);
         }
     }
 
     // Save settings on exit
     settings.music_enabled = audio.isEnabled();
     settings.is_fullscreen = global_fullscreen;
+    // Make sure we save the correct high score (use game.high_score if it's higher)
+    if (game.high_score > settings.high_score) {
+        std.debug.print("Exit: game.high_score ({d}) > settings.high_score ({d}), updating\n", .{ game.high_score, settings.high_score });
+        settings.high_score = game.high_score;
+    }
+    std.debug.print("Saving settings on exit: high_score={d}\n", .{settings.high_score});
     settings.save(allocator);
 }
 

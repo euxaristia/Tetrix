@@ -30,6 +30,8 @@ pub const Settings = struct {
 
         // Parse JSON manually (simple format)
         settings.parseJson(content);
+        
+        std.debug.print("Settings: loaded high_score={d} from file\n", .{settings.high_score});
 
         return settings;
     }
@@ -59,6 +61,7 @@ pub const Settings = struct {
                 }
                 if (end > str_start) {
                     const score_str = content[str_start..end];
+                    std.debug.print("Parsed score_str from JSON: '{s}'\n", .{score_str});
                     self.high_score = self.deobfuscateHighScore(score_str);
                 }
             } else {
@@ -151,16 +154,21 @@ pub const Settings = struct {
         // The prefix itself doesn't need obfuscation since it's just a marker
         if (std.mem.startsWith(u8, obfuscated, "HS")) {
             const score_str = obfuscated[2..];
-            const obfuscated_int = std.fmt.parseInt(u32, score_str, 10) catch return 0;
+            const obfuscated_int = std.fmt.parseInt(u32, score_str, 10) catch {
+                std.debug.print("Failed to parse obfuscated score: {s}\n", .{score_str});
+                return 0;
+            };
+            std.debug.print("Deobfuscating: obfuscated_int={d}, constant={d}\n", .{ obfuscated_int, obfuscation_constant });
             // Handle potential underflow with wrapping subtraction
-            if (obfuscated_int >= obfuscation_constant) {
-                return obfuscated_int -% obfuscation_constant;
-            } else {
-                // Handle wrap-around case
-                return obfuscated_int -% obfuscation_constant;
-            }
+            const result = if (obfuscated_int >= obfuscation_constant)
+                obfuscated_int -% obfuscation_constant
+            else
+                obfuscated_int -% obfuscation_constant;
+            std.debug.print("Deobfuscated result: {d}\n", .{result});
+            return result;
         } else {
             // Not obfuscated, try to parse as plain number (backwards compatibility)
+            std.debug.print("No HS prefix, parsing as plain number: {s}\n", .{obfuscated});
             return std.fmt.parseInt(u32, obfuscated, 10) catch 0;
         }
     }
