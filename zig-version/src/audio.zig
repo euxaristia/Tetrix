@@ -410,6 +410,12 @@ pub const AudioPlayer = struct {
     }
 
     pub fn play(self: *AudioPlayer) void {
+        // Only play if music is enabled (respect user's toggle)
+        const enabled = self.enabled.load(.acquire);
+        if (!enabled) {
+            std.debug.print("Audio: play() called but music is disabled, ignoring\n", .{});
+            return;
+        }
         const current = self.playing.load(.acquire);
         if (!current) {
             std.debug.print("Audio: play() called - playing={} -> true\n", .{current});
