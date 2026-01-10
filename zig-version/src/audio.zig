@@ -263,7 +263,7 @@ pub const AudioPlayer = struct {
                 std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
                 last_enabled = enabled;
                 last_playing = playing;
-                // Reset debug flag on state change
+                // Reset debug flag on state change (so we log first write after resuming)
                 self.mutex.lock();
                 self.debug_wrote_after_toggle = false;
                 self.mutex.unlock();
@@ -370,16 +370,15 @@ pub const AudioPlayer = struct {
                     ptr += written;
 
                     // Debug: Show that we're writing audio (only first time after state change)
-                    self.mutex.lock();
-                    if (written > 0 and !self.debug_wrote_after_toggle) {
-                        std.debug.print("Audio: Successfully resumed playback - wrote {d} frames to ALSA\n", .{written});
-                        self.debug_wrote_after_toggle = true;
+                    // Note: flag is reset when state changes, so this only logs once per resume
+                    if (written > 0) {
+                        self.mutex.lock();
+                        defer self.mutex.unlock();
+                        if (!self.debug_wrote_after_toggle) {
+                            std.debug.print("Audio: Successfully resumed playback - wrote {d} frames to ALSA\n", .{written});
+                            self.debug_wrote_after_toggle = true;
+                        }
                     }
-                    // Reset flag when buffer is complete
-                    if (frames_to_write == 0) {
-                        self.debug_wrote_after_toggle = false;
-                    }
-                    self.mutex.unlock();
                 }
             }
         }
