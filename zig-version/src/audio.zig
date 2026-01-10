@@ -494,8 +494,12 @@ pub const AudioPlayer = struct {
         if (current != enabled) {
             std.debug.print("Audio: setEnabled() called - {} -> {}\n", .{current, enabled});
             self.enabled.store(enabled, .release);
-            // Also update playing state to match
-            self.playing.store(enabled, .release);
+            // Don't automatically set playing - let play()/stop() handle that
+            // Only set playing to false if disabling, to stop immediately
+            if (!enabled) {
+                self.playing.store(false, .release);
+                std.debug.print("Audio: setEnabled() disabled, also set playing=false\n", .{});
+            }
         }
     }
 

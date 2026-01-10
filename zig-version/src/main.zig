@@ -101,12 +101,15 @@ pub fn main() !void {
         c.glfwPollEvents();
 
         // Handle input
+        // Note: M key toggle is handled in key callback, not here
+        // This just reads the current state for the input handler
         var music_enabled = audio.isEnabled();
         input.update(&game, delta_time, window, &music_enabled, &global_fullscreen, &global_window_width, &global_window_height);
+        // Only update if input handler actually changed it (not for M key which uses toggle())
         if (music_enabled != audio.isEnabled()) {
-            std.debug.print("Main: music_enabled changed from input - {} -> {}\n", .{audio.isEnabled(), music_enabled});
+            std.debug.print("Main: music_enabled changed from input handler - {} -> {}\n", .{audio.isEnabled(), music_enabled});
+            audio.setEnabled(music_enabled);
         }
-        audio.setEnabled(music_enabled);
 
         // Update renderer state
         renderer.use_controller = input.isUsingController();
