@@ -74,9 +74,11 @@ pub const AudioPlayer = struct {
     const samples_per_beat: u32 = @intFromFloat(@as(f32, @floatFromInt(SAMPLE_RATE)) * 60.0 / TEMPO_BPM);
 
     pub fn init() AudioPlayer {
-        var player = AudioPlayer{};
-        player.startAudioThread();
-        return player;
+        return AudioPlayer{};
+    }
+    
+    pub fn start(self: *AudioPlayer) void {
+        self.startAudioThread();
     }
 
     fn startAudioThread(self: *AudioPlayer) void {
@@ -94,6 +96,7 @@ pub const AudioPlayer = struct {
 
         // Try multiple ALSA devices to find a working one
         // Prioritize the plughw device that we know works
+        std.debug.print("Audio: Trying to open ALSA devices...\n", .{});
         const devices = [_][*:0]const u8{
             "plughw:1,3", // Plug version for NVIDIA HDMI 0 - handles format conversion (WORKING!)
             "plughw:1,7", // Plug version for NVIDIA HDMI 1
@@ -117,6 +120,14 @@ pub const AudioPlayer = struct {
                 break;
             } else {
                 std.debug.print("Audio: Failed to open device {s}: {d}\n", .{devices[device_index], open_result});
+            }
+
+            // If we've tried all devices and none worked
+            if (device_index == devices.len - 1) {
+                std.debug.print("Audio: ERROR - Failed to open ANY audio device!\n", .{});
+                std.debug.print("Audio: This usually means ALSA is not properly configured or devices are in use.\n", .{});
+                std.debug.print("Audio: Game will continue without audio.\n", .{});
+                return; // Exit audio thread gracefully if no devices work
             }
 
             // If we're on the last device and it failed, clean up and return
@@ -146,10 +157,14 @@ pub const AudioPlayer = struct {
         var period_size: c.snd_pcm_uframes_t = 1024;
         _ = c.snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, null);
 
-        if (c.snd_pcm_hw_params(handle, params) < 0) {
+        std.debug.print("Audio: Setting ALSA parameters...\n", .{});
+        const params_result = c.snd_pcm_hw_params(handle, params);
+        if (params_result < 0) {
+            std.debug.print("Audio: ERROR - Failed to set ALSA parameters: {d}\n", .{params_result});
             _ = c.snd_pcm_close(handle);
             return;
         }
+        std.debug.print("Audio: ALSA parameters set successfully\n", .{});
 
         if (c.snd_pcm_prepare(handle) < 0) {
             _ = c.snd_pcm_close(handle);
@@ -251,11 +266,18 @@ pub const AudioPlayer = struct {
         self.playing.store(false, .release);
         self.enabled.store(false, .release);
 
+        // Get a local copy of the thread handle before joining
+        // This avoids potential issues with accessing self.audio_thread
+        const thread_to_join = self.audio_thread;
+        
         // Give the thread a moment to stop gracefully
         std.Thread.sleep(100 * std.time.ns_per_ms);
 
-        if (self.audio_thread) |thread| {
+        // Safety check - audio_thread might be null if initialization failed
+        if (thread_to_join) |thread| {
             thread.join();
+        } else {
+            std.debug.print("Audio: deinit called but audio_thread was null\n", .{});
         }
 
         // Ensure ALSA handle is closed

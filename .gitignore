@@ -5,3 +5,5 @@
 # Zig build artifacts
 zig-version/.zig-cache/
 zig-version/zig-out/
+simple_alsa_test
+test_audio

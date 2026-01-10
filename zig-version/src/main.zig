@@ -64,6 +64,7 @@ pub fn main() !void {
     var renderer = Renderer.init();
     var input = InputHandler.init();
     var audio = AudioPlayer.init();
+    audio.start();
     defer audio.deinit();
 
     audio.setEnabled(settings.music_enabled);
