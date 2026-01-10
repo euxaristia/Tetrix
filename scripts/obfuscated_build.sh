@@ -13,20 +13,15 @@ echo "Building obfuscated Windows release..."
 
 # Build with maximum optimization and obfuscation
 # ReleaseSmall automatically strips symbols, so --strip flag is not needed
+# Use -Dname=tetrix-tenebrated to set the output executable name
 zig build \
     -Dtarget=x86_64-windows \
-    -Doptimize=ReleaseSmall
+    -Doptimize=ReleaseSmall \
+    -Dname=tetrix-tenebrated
 
-# Rename to tetrix-tenebrated.exe for obfuscated builds
-if [ -f "$PROJECT_ROOT/zig-out/bin/tetrix.exe" ]; then
-    mv "$PROJECT_ROOT/zig-out/bin/tetrix.exe" "$PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"
-    echo ""
-    echo "✓ Build complete!"
-    echo "  Binary: $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"
-else
-    echo "❌ Build failed: tetrix.exe not found"
-    exit 1
-fi
+echo ""
+echo "✓ Build complete!"
+echo "  Binary: $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"
 echo ""
 echo "Obfuscation features enabled:"
 echo "  - ReleaseSmall optimization (smallest binary size)"

@@ -3,9 +3,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    
+    // Option to set custom executable name (for obfuscated builds)
+    const exe_name_option = b.option([]const u8, "name", "Executable name") orelse "tetrix";
 
     const exe = b.addExecutable(.{
-        .name = "tetrix",
+        .name = exe_name_option,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
