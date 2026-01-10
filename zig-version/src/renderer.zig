@@ -278,10 +278,44 @@ pub const Renderer = struct {
         const color = piece_type.getColor();
         const size: i32 = @intFromFloat(@as(f32, @floatFromInt(CELL_SIZE)) * scale);
 
+        // Calculate bounding box to center the piece
+        var min_x: i32 = offsets[0].x;
+        var max_x: i32 = offsets[0].x;
+        var min_y: i32 = offsets[0].y;
+        var max_y: i32 = offsets[0].y;
+        
+        for (offsets[1..]) |offset| {
+            min_x = @min(min_x, offset.x);
+            max_x = @max(max_x, offset.x);
+            min_y = @min(min_y, offset.y);
+            max_y = @max(max_y, offset.y);
+        }
+        
+        // Calculate the width and height of the piece in blocks
+        const width_blocks = max_x - min_x + 1;
+        const height_blocks = max_y - min_y + 1;
+        
+        // Center horizontally: x is the left edge of preview area
+        // We want to center the piece within a 4-block-wide area (max tetromino width)
+        const preview_width_blocks: i32 = 4;
+        const preview_width_px = preview_width_blocks * size;
+        const piece_width_px = width_blocks * size;
+        const center_x_offset = @divTrunc(preview_width_px - piece_width_px, 2);
+        
+        // Center vertically: y is the top of preview area
+        // Start from top and center vertically within preview area
+        const preview_height_blocks: i32 = 2;
+        const preview_height_px = preview_height_blocks * size;
+        const piece_height_px = height_blocks * size;
+        const center_y_offset = @divTrunc(preview_height_px - piece_height_px, 2);
+
         self.setColor(color);
         for (offsets) |offset| {
-            const px = x + @as(i32, @intFromFloat(@as(f32, @floatFromInt(offset.x)) * @as(f32, @floatFromInt(size))));
-            const py = y + @as(i32, @intFromFloat(@as(f32, @floatFromInt(offset.y)) * @as(f32, @floatFromInt(size))));
+            // Calculate position relative to top-left of bounding box, then center
+            const block_x_in_piece = offset.x - min_x;
+            const block_y_in_piece = offset.y - min_y;
+            const px = x + center_x_offset + block_x_in_piece * size;
+            const py = y + center_y_offset + block_y_in_piece * size;
             self.drawRect(px, py, size - 2, size - 2);
         }
     }
