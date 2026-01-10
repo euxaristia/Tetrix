@@ -5,7 +5,7 @@ pub const SAMPLE_RATE: u32 = 44100;
 const AMPLITUDE: f32 = 20000.0; // Significantly increased amplitude for better volume
 const TEMPO_BPM: f32 = 149.0;
 
-// Note frequencies
+// Note frequencies (matching Swift version)
 const NOTE_FREQ = struct {
     const C3: f32 = 130.81;
     const D3: f32 = 146.83;
@@ -37,25 +37,94 @@ const Note = struct {
     duration: f32, // in beats
 };
 
-// Simplified Korobeiniki melody (Tetris theme)
+// Complete Korobeiniki melody (Tetris theme) - matching Swift version
+// Full Game Boy Type A theme loop
 const melody = [_]Note{
-    // Basic recognizable Tetris theme
+    // First phrase (2/4 time, eighth notes and quarter notes)
     .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
-    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.5 },
+    // Second phrase
     .{ .freq = NOTE_FREQ.A4, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 1.5 },
+    // Third phrase
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    // Fourth phrase
+    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.A5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.B4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
     .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
     .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    // Extended section - middle part of the full melody
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.5 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 1.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    // Final phrase leading back to start
+    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.A5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    // Extended ending for smoother loop - resolves more naturally
+    .{ .freq = NOTE_FREQ.G4, .duration = 2.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 1.0 },
 };
 
 pub const AudioPlayer = struct {
