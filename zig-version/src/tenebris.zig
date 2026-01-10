@@ -43,9 +43,16 @@ pub const ObfuscatedString = struct {
     /// The string is XOR-encoded at compile time, so it doesn't appear in plaintext in the binary
     /// Usage: const str = ObfuscatedString.init("Hello", 0x42);
     pub fn init(comptime str: []const u8, comptime key: u8) ObfuscatedString {
-        const obfuscated = Tenebris.decode(str, key);
+        // Create obfuscated bytes array at comptime and return as a comptime-known array
+        const obfuscated = comptime blk: {
+            var result: [str.len]u8 = undefined;
+            for (str, 0..) |byte, i| {
+                result[i] = byte ^ key;
+            }
+            break :blk result;
+        };
         return .{
-            .bytes = obfuscated,
+            .bytes = &obfuscated,
             .key = key,
         };
     }
