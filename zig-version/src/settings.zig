@@ -122,6 +122,8 @@ pub const Settings = struct {
         var obfuscated_buf: [32]u8 = undefined;
         const obfuscated_score = self.obfuscateHighScore(self.high_score, &obfuscated_buf);
         
+        std.debug.print("Saving settings: high_score={d}, obfuscated={s}\n", .{ self.high_score, obfuscated_score });
+        
         // Create JSON content with obfuscated high score
         const json = std.fmt.allocPrint(allocator, "{{\"highScore\":\"{s}\",\"musicEnabled\":{},\"isFullscreen\":{}}}", .{
             obfuscated_score,
