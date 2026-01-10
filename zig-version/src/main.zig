@@ -103,6 +103,9 @@ pub fn main() !void {
         // Handle input
         var music_enabled = audio.isEnabled();
         input.update(&game, delta_time, window, &music_enabled, &global_fullscreen, &global_window_width, &global_window_height);
+        if (music_enabled != audio.isEnabled()) {
+            std.debug.print("Main: music_enabled changed from input - {} -> {}\n", .{audio.isEnabled(), music_enabled});
+        }
         audio.setEnabled(music_enabled);
 
         // Update renderer state

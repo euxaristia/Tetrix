@@ -249,12 +249,20 @@ pub const AudioPlayer = struct {
         // Audio generation loop
         var buffer: [512]i16 = undefined;
 
+        // Track last state for debug output
+        var last_enabled: bool = true;
+        var last_playing: bool = true;
+        
         while (!self.should_stop.load(.acquire)) {
             const enabled = self.enabled.load(.acquire);
             const playing = self.playing.load(.acquire);
 
             // Debug: Show audio state changes
-            // std.debug.print("Audio: enabled={}, playing={}\n", .{enabled, playing});
+            if (enabled != last_enabled or playing != last_playing) {
+                std.debug.print("Audio: state changed - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
+                last_enabled = enabled;
+                last_playing = playing;
+            }
 
             // Check both enabled and playing states
             if (!enabled or !playing) {
@@ -265,7 +273,12 @@ pub const AudioPlayer = struct {
             }
             
             // Double-check state after sleep (in case it changed)
-            if (!self.enabled.load(.acquire) or !self.playing.load(.acquire)) {
+            const enabled_after_sleep = self.enabled.load(.acquire);
+            const playing_after_sleep = self.playing.load(.acquire);
+            if (!enabled_after_sleep or !playing_after_sleep) {
+                if (enabled_after_sleep != enabled or playing_after_sleep != playing) {
+                    std.debug.print("Audio: state changed during sleep - enabled={}->{}, playing={}->{}\n", .{enabled, enabled_after_sleep, playing, playing_after_sleep});
+                }
                 continue;
             }
 
@@ -301,7 +314,10 @@ pub const AudioPlayer = struct {
 
             while (frames_to_write > 0 and !self.should_stop.load(.acquire)) {
                 // Check if music is still enabled before writing
-                if (!self.enabled.load(.acquire) or !self.playing.load(.acquire)) {
+                const enabled_before_write = self.enabled.load(.acquire);
+                const playing_before_write = self.playing.load(.acquire);
+                if (!enabled_before_write or !playing_before_write) {
+                    std.debug.print("Audio: write stopped - enabled={}, playing={}\n", .{enabled_before_write, playing_before_write});
                     break;
                 }
                 
@@ -394,18 +410,29 @@ pub const AudioPlayer = struct {
     }
 
     pub fn play(self: *AudioPlayer) void {
-        self.playing.store(true, .release);
+        const current = self.playing.load(.acquire);
+        if (!current) {
+            std.debug.print("Audio: play() called - playing={} -> true\n", .{current});
+            self.playing.store(true, .release);
+        }
     }
 
     pub fn stop(self: *AudioPlayer) void {
-        self.playing.store(false, .release);
+        const current = self.playing.load(.acquire);
+        if (current) {
+            std.debug.print("Audio: stop() called - playing={} -> false\n", .{current});
+            self.playing.store(false, .release);
+        }
     }
 
     pub fn toggle(self: *AudioPlayer) void {
         const current = self.enabled.load(.acquire);
+        const current_playing = self.playing.load(.acquire);
         const new_state = !current;
+        std.debug.print("Audio: toggle() called - current enabled={}, playing={}, new enabled={}\n", .{ current, current_playing, new_state });
         self.enabled.store(new_state, .release);
         self.playing.store(new_state, .release);
+        std.debug.print("Audio: toggle() complete - enabled={}, playing={}\n", .{ self.enabled.load(.acquire), self.playing.load(.acquire) });
     }
 
     pub fn update(self: *AudioPlayer) void {
@@ -457,7 +484,13 @@ pub const AudioPlayer = struct {
     }
 
     pub fn setEnabled(self: *AudioPlayer, enabled: bool) void {
-        self.enabled.store(enabled, .release);
+        const current = self.enabled.load(.acquire);
+        if (current != enabled) {
+            std.debug.print("Audio: setEnabled() called - {} -> {}\n", .{current, enabled});
+            self.enabled.store(enabled, .release);
+            // Also update playing state to match
+            self.playing.store(enabled, .release);
+        }
     }
 
     pub fn isEnabled(self: *const AudioPlayer) bool {
