@@ -143,6 +143,63 @@ const melody = [_]Note{
     .{ .freq = NOTE_FREQ.B4, .duration = 1.0 },
 };
 
+// Jingle Bells melody - classic LED Christmas tree light piezoelectric speaker style
+// Uses higher frequencies and simpler, more chiptune-like arrangement typical of those speakers
+const jingle_bells_melody = [_]Note{
+    // Jingle bells, jingle bells, jingle all the way
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 2.0 },
+    // Oh what fun it is to ride
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.F5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 2.0 },
+    // In a one-horse open sleigh
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 2.0 },
+    // Hey! (classic Christmas tree light ending - higher pitch)
+    .{ .freq = NOTE_FREQ.REST, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.G5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.E5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.D5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.C5, .duration = 0.5 },
+    .{ .freq = NOTE_FREQ.B4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.A4, .duration = 1.0 },
+    .{ .freq = NOTE_FREQ.G4, .duration = 2.0 },
+};
+
 pub const AudioPlayer = struct {
     enabled: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
     playing: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
@@ -154,6 +211,7 @@ pub const AudioPlayer = struct {
     sample_index: u64 = 0,
     note_index: usize = 0,
     note_sample_position: u32 = 0,
+    current_melody: []const Note = undefined, // Current melody being played
     pcm_handle: ?*c.snd_pcm_t = null, // ALSA handle (Linux)
     waveout_handle: ?c.HWAVEOUT = null, // waveOut handle (Windows)
     waveout_headers: [4]c.WAVEHDR = undefined, // waveOut buffers (Windows)
@@ -182,6 +240,25 @@ pub const AudioPlayer = struct {
 
     fn audioThreadFn(self: *AudioPlayer) void {
         std.debug.print("Audio thread started!\n", .{});
+
+        // Select melody randomly: ~6.67% chance (1/15) for Jingle Bells, ~93.33% for Tetris theme
+        const seed: u64 = @intCast(std.time.timestamp());
+        var prng = std.Random.DefaultPrng.init(seed);
+        const random = prng.random();
+        const use_jingle_bells = random.uintLessThan(u32, 15) == 0;
+
+        self.mutex.lock();
+        self.current_melody = if (use_jingle_bells) &jingle_bells_melody else &melody;
+        self.note_index = 0;
+        self.note_sample_position = 0;
+        self.sample_index = 0;
+        self.mutex.unlock();
+
+        if (use_jingle_bells) {
+            std.debug.print("Audio: Selected Jingle Bells melody\n", .{});
+        } else {
+            std.debug.print("Audio: Selected Tetris theme (Korobeiniki)\n", .{});
+        }
 
         // Platform-specific audio initialization
         if (builtin.target.os.tag == .linux) {
@@ -290,12 +367,12 @@ pub const AudioPlayer = struct {
         const initial_playing = self.playing.load(.acquire);
         var last_enabled: bool = initial_enabled;
         var last_playing: bool = initial_playing;
-        
+
         // Initialize fade volume based on initial state
         self.mutex.lock();
         self.fade_volume = if (initial_enabled and initial_playing) 1.0 else 0.0;
         self.mutex.unlock();
-        
+
         const FADE_DURATION_MS: u32 = 200; // 200ms fade for smoother transitions (increased to reduce popping)
         const FADE_DURATION_SAMPLES: u32 = (FADE_DURATION_MS * SAMPLE_RATE) / 1000; // ~8820 samples at 44.1kHz
 
@@ -573,12 +650,12 @@ pub const AudioPlayer = struct {
         const initial_playing = self.playing.load(.acquire);
         var last_enabled: bool = initial_enabled;
         var last_playing: bool = initial_playing;
-        
+
         // Initialize fade volume based on initial state
         self.mutex.lock();
         self.fade_volume = if (initial_enabled and initial_playing) 1.0 else 0.0;
         self.mutex.unlock();
-        
+
         const FADE_DURATION_MS: u32 = 200; // 200ms fade for smoother transitions (increased to reduce popping)
         const FADE_DURATION_SAMPLES: u32 = (FADE_DURATION_MS * SAMPLE_RATE) / 1000; // ~8820 samples at 44.1kHz
 
@@ -822,13 +899,13 @@ pub const AudioPlayer = struct {
 
     fn generateSample(self: *AudioPlayer) i16 {
         // Safety check for note index
-        if (self.note_index >= melody.len) {
+        if (self.note_index >= self.current_melody.len) {
             self.note_index = 0;
             self.note_sample_position = 0;
             self.sample_index = 0;
         }
 
-        const current_note = melody[self.note_index];
+        const current_note = self.current_melody[self.note_index];
         const note_samples: u32 = @intFromFloat(current_note.duration * @as(f32, @floatFromInt(samples_per_beat)));
 
         // Calculate envelope for smooth transitions
@@ -857,7 +934,7 @@ pub const AudioPlayer = struct {
 
         if (self.note_sample_position >= note_samples) {
             self.note_sample_position = 0;
-            self.note_index = (self.note_index + 1) % melody.len;
+            self.note_index = (self.note_index + 1) % self.current_melody.len;
         }
 
         return @intFromFloat(sample);
