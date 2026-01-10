@@ -20,15 +20,15 @@ zig build \
     -Dname=tetrix-tenebrated
 
 echo ""
-echo "✓ Build complete!"
-echo "  Binary: $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"
 echo ""
 echo "Obfuscation features enabled:"
 echo "  - ReleaseSmall optimization (smallest binary size)"
 echo "  - Strip symbols (removes debug info)"
 echo "  - Tenebris string obfuscation (compile-time XOR encoding)"
 echo ""
-echo ""
 echo "To verify obfuscation, run:"
 echo "  strings $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe | grep -i 'tetrix\|paused\|game over'"
 echo "  (Should return nothing if obfuscation is working)"
+
+echo "To run on Windows (PowerShell):"
+echo "  $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"

@@ -3,7 +3,24 @@ const builtin = @import("builtin");
 const c = @import("c.zig");
 
 pub const SAMPLE_RATE: u32 = 44100;
-const AMPLITUDE: f32 = 20000.0; // Significantly increased amplitude for better volume
+
+// Platform-specific sleep function
+fn sleepMs(ms: u64) void {
+    if (builtin.target.os.tag == .windows) {
+        // Windows: Use Sleep from kernel32.dll
+        const kernel32 = std.os.windows.kernel32;
+        kernel32.Sleep(@intCast(ms));
+    } else {
+        // Unix: Use nanosleep
+        const delay_ns = ms * std.time.ns_per_ms;
+        std.posix.nanosleep(0, delay_ns);
+    }
+}
+// Platform-specific amplitude: Windows needs lower volume, Linux needs higher
+const AMPLITUDE: f32 = if (@import("builtin").target.os.tag == .windows) 
+    8000.0  // Quieter for Windows
+else 
+    15000.0; // Louder for Linux/ALSA
 const TEMPO_BPM: f32 = 149.0;
 
 // Note frequencies (matching Swift version)
@@ -140,9 +157,10 @@ pub const AudioPlayer = struct {
     note_index: usize = 0,
     note_sample_position: u32 = 0,
     pcm_handle: ?*c.snd_pcm_t = null, // ALSA handle (Linux)
-    wasapi_client: ?*c.IAudioClient = null, // WASAPI client (Windows)
-    wasapi_render: ?*c.IAudioRenderClient = null, // WASAPI render client (Windows)
-    wasapi_buffer_size: u32 = 0, // WASAPI buffer size in frames
+    waveout_handle: ?c.HWAVEOUT = null, // waveOut handle (Windows)
+    waveout_headers: [4]c.WAVEHDR = undefined, // waveOut buffers (Windows)
+    waveout_buffer_data: [4][4096]u8 = undefined, // Audio buffer data (Windows)
+    waveout_current_buffer: usize = 0, // Current buffer index (Windows)
     debug_wrote_after_toggle: bool = false,
 
     const samples_per_beat: u32 = @intFromFloat(@as(f32, @floatFromInt(SAMPLE_RATE)) * 60.0 / TEMPO_BPM);
@@ -169,7 +187,7 @@ pub const AudioPlayer = struct {
         if (builtin.target.os.tag == .linux) {
             self.initAlsa();
         } else if (builtin.target.os.tag == .windows) {
-            self.initWasapi();
+            self.initWaveOut();
         } else {
             std.debug.print("Audio: Not supported on this platform\n", .{});
             return;
@@ -182,12 +200,12 @@ pub const AudioPlayer = struct {
         var handle: ?*c.snd_pcm_t = null;
 
         // Try multiple ALSA devices to find a working one
-        // Prioritize the plughw device that we know works
+        // Prioritize "default" first for PipeWire compatibility (routes to default PipeWire device)
         std.debug.print("Audio: Trying to open ALSA devices...\n", .{});
         const devices = [_][*:0]const u8{
-            "plughw:1,3", // Plug version for NVIDIA HDMI 0 - handles format conversion (WORKING!)
+            "default",   // PipeWire default device (should route to user's default audio device)
+            "plughw:1,3", // Plug version for NVIDIA HDMI 0 - handles format conversion
             "plughw:1,7", // Plug version for NVIDIA HDMI 1
-            "default",
             "plughw:0,0", // Plug version for HyperX Wireless
             "plughw:2,0", // Plug version for Intel PCH Analog
             "sysdefault:CARD=NVidia", // System default for NVIDIA card
@@ -293,9 +311,7 @@ pub const AudioPlayer = struct {
             if (!enabled or !playing) {
                 // Sleep when not playing to avoid busy-waiting
                 // Don't generate samples when disabled - this ensures clean state when re-enabled
-                // Zig 0.16+ API: nanosleep takes seconds and nanoseconds separately
-                const delay_ns = 10 * std.time.ns_per_ms;
-                std.posix.nanosleep(0, delay_ns);
+                sleepMs(10);
                 continue;
             }
             
@@ -419,63 +435,12 @@ pub const AudioPlayer = struct {
         }
     }
 
-    fn initWasapi(self: *AudioPlayer) void {
-        std.debug.print("Audio: Initializing WASAPI...\n", .{});
-
-        // Initialize COM
-        const hr_init = c.CoInitializeEx(null, 0);
-        if (hr_init != 0 and hr_init != 1) { // S_OK = 0, S_FALSE = 1
-            std.debug.print("Audio: Failed to initialize COM: {d}\n", .{hr_init});
-            return;
-        }
-
-        // Create device enumerator
-        var enumerator: ?*c.IMMDeviceEnumerator = null;
-        const hr_create = c.CoCreateInstance(
-            c.CLSID_MMDeviceEnumerator,
-            null,
-            c.CLSCTX_ALL,
-            c.IID_IMMDeviceEnumerator,
-            @ptrCast(&enumerator),
-        );
-        if (hr_create != 0 or enumerator == null) {
-            std.debug.print("Audio: Failed to create device enumerator: {d}\n", .{hr_create});
-            c.CoUninitialize();
-            return;
-        }
-
-        // Get default audio endpoint
-        var device: ?*c.IMMDevice = null;
-        const hr_endpoint = c.IMMDeviceEnumerator_GetDefaultAudioEndpoint(
-            enumerator.?,
-            c.eRender,
-            c.eConsole,
-            &device,
-        );
-        if (hr_endpoint != 0 or device == null) {
-            std.debug.print("Audio: Failed to get default audio endpoint: {d}\n", .{hr_endpoint});
-            c.CoUninitialize();
-            return;
-        }
-
-        // Activate IAudioClient
-        var audioClient: ?*c.IAudioClient = null;
-        const hr_activate = c.IMMDevice_Activate(
-            device.?,
-            c.IID_IAudioClient,
-            c.CLSCTX_ALL,
-            null,
-            @ptrCast(&audioClient),
-        );
-        if (hr_activate != 0 or audioClient == null) {
-            std.debug.print("Audio: Failed to activate IAudioClient: {d}\n", .{hr_activate});
-            c.CoUninitialize();
-            return;
-        }
+    fn initWaveOut(self: *AudioPlayer) void {
+        std.debug.print("Audio: Initializing waveOut...\n", .{});
 
         // Set up WAVEFORMATEX for 16-bit PCM, mono, 44100 Hz
         var format = c.WAVEFORMATEX{
-            .wFormatTag = 1, // WAVE_FORMAT_PCM
+            .wFormatTag = c.WAVE_FORMAT_PCM,
             .nChannels = 1,
             .nSamplesPerSec = SAMPLE_RATE,
             .nAvgBytesPerSec = SAMPLE_RATE * 2, // 16-bit = 2 bytes per sample
@@ -484,76 +449,61 @@ pub const AudioPlayer = struct {
             .cbSize = 0,
         };
 
-        // Initialize audio client (shared mode, 10ms buffer)
-        const REFTIMES_PER_SEC: c_ulong = 10000000;
-        const bufferDuration: c_ulong = REFTIMES_PER_SEC / 100; // 100ms buffer
-        const hr_init_client = c.IAudioClient_Initialize(
-            audioClient.?,
-            c.AUDCLNT_SHAREMODE_SHARED,
-            0, // No stream flags
-            bufferDuration,
-            0, // Periodicity (not used in shared mode)
+        // Open waveOut device
+        var waveOut: c.HWAVEOUT = undefined;
+        const result = c.waveOutOpen(
+            &waveOut,
+            c.WAVE_MAPPER,
             &format,
-            null, // No audio session GUID
+            0, // No callback
+            0, // No instance data
+            c.CALLBACK_NULL,
         );
-        if (hr_init_client != 0) {
-            std.debug.print("Audio: Failed to initialize IAudioClient: {d}\n", .{hr_init_client});
-            c.CoUninitialize();
+        if (result != 0) {
+            std.debug.print("Audio: Failed to open waveOut device (error code: {d})\n", .{result});
+            std.debug.print("Audio: If running under Wine, ensure PulseAudio/ALSA is configured:\n", .{});
+            std.debug.print("Audio:   export PULSE_RUNTIME_PATH=/run/user/$UID/pulse\n", .{});
+            std.debug.print("Audio:   winecfg -> Audio -> Enable audio driver\n", .{});
             return;
         }
+        
+        std.debug.print("Audio: waveOut device opened successfully\n", .{});
 
-        // Get buffer size
-        var bufferSize: c_ulong = 0;
-        const hr_buffer = c.IAudioClient_GetBufferSize(audioClient.?, &bufferSize);
-        if (hr_buffer != 0) {
-            std.debug.print("Audio: Failed to get buffer size: {d}\n", .{hr_buffer});
-            c.CoUninitialize();
-            return;
-        }
-        std.debug.print("Audio: WASAPI buffer size: {d} frames\n", .{bufferSize});
-
-        // Get IAudioRenderClient
-        var renderClient: ?*c.IAudioRenderClient = null;
-        const hr_service = c.IAudioClient_GetService(
-            audioClient.?,
-            c.IID_IAudioRenderClient,
-            @ptrCast(&renderClient),
-        );
-        if (hr_service != 0 or renderClient == null) {
-            std.debug.print("Audio: Failed to get IAudioRenderClient: {d}\n", .{hr_service});
-            c.CoUninitialize();
-            return;
-        }
-
-        // Store handles
+        // Initialize buffers
         {
             self.mutex.lock();
             defer self.mutex.unlock();
-            self.wasapi_client = audioClient;
-            self.wasapi_render = renderClient;
-            self.wasapi_buffer_size = @intCast(bufferSize);
+            self.waveout_handle = waveOut;
+            self.waveout_current_buffer = 0;
+
+            // Initialize all WAVEHDR structures
+            for (&self.waveout_headers, 0..) |*header, i| {
+                header.* = std.mem.zeroes(c.WAVEHDR);
+                header.lpData = &self.waveout_buffer_data[i];
+                header.dwBufferLength = @intCast(self.waveout_buffer_data[i].len);
+                header.dwFlags = 0;
+                header.dwLoops = 0;
+
+                // Prepare header
+                const prep_result = c.waveOutPrepareHeader(waveOut, header, @sizeOf(c.WAVEHDR));
+                if (prep_result != 0) {
+                    std.debug.print("Audio: Failed to prepare waveOut header {d}: {d}\n", .{ i, prep_result });
+                    _ = c.waveOutClose(waveOut);
+                    self.waveout_handle = null;
+                    return;
+                }
+            }
         }
 
-        std.debug.print("Audio: WASAPI initialized successfully\n", .{});
-
-        // Start audio client
-        const hr_start = c.IAudioClient_Start(audioClient.?);
-        if (hr_start != 0) {
-            std.debug.print("Audio: Failed to start IAudioClient: {d}\n", .{hr_start});
-            c.CoUninitialize();
-            return;
-        }
+        std.debug.print("Audio: waveOut initialized successfully\n", .{});
 
         // Audio generation loop
-        var buffer: [512]i16 = undefined;
         var last_enabled: bool = true;
         var last_playing: bool = true;
 
         while (!self.should_stop.load(.acquire)) {
             const enabled = self.enabled.load(.acquire);
             const playing = self.playing.load(.acquire);
-
-            const is_resuming = (enabled and playing) and (!last_enabled or !last_playing);
 
             if (enabled != last_enabled or playing != last_playing) {
                 std.debug.print("Audio: thread state - enabled={}->{}, playing={}->{}\n", .{ last_enabled, enabled, last_playing, playing });
@@ -565,8 +515,7 @@ pub const AudioPlayer = struct {
             }
 
             if (!enabled or !playing) {
-                const delay_ns = 10 * std.time.ns_per_ms;
-                std.posix.nanosleep(0, delay_ns);
+                sleepMs(10);
                 continue;
             }
 
@@ -576,62 +525,67 @@ pub const AudioPlayer = struct {
                 continue;
             }
 
-            if (is_resuming) {
-                std.debug.print("Audio: Resuming WASAPI playback\n", .{});
-                self.mutex.lock();
-                if (self.wasapi_client) |client| {
-                    _ = c.IAudioClient_Start(client);
-                }
-                self.mutex.unlock();
-            }
-
-            // Generate audio samples
+            // Get current buffer
             self.mutex.lock();
-            var sample_idx: usize = 0;
-            while (sample_idx < buffer.len) : (sample_idx += 1) {
-                buffer[sample_idx] = self.generateSample();
-            }
+            const handle = self.waveout_handle;
+            const current_idx = self.waveout_current_buffer;
+            var header = &self.waveout_headers[current_idx];
             self.mutex.unlock();
 
-            // Write to WASAPI
-            self.mutex.lock();
-            const client = self.wasapi_client;
-            const render = self.wasapi_render;
-            self.mutex.unlock();
-
-            if (client == null or render == null) {
+            if (handle == null) {
                 break;
             }
 
-            // Get available space in buffer
-            // Request buffer space
-            var data: [*]u8 = undefined;
-            self.mutex.lock();
-            const bufSize = self.wasapi_buffer_size;
-            self.mutex.unlock();
-            const framesToWrite: c_ulong = @min(@as(c_ulong, buffer.len), bufSize / 4); // Write quarter buffer at a time
-            const hr_get = c.IAudioRenderClient_GetBuffer(render.?, framesToWrite, &data);
-            if (hr_get == 0) {
-                // Copy audio data (16-bit samples)
-                @memcpy(data[0..framesToWrite * 2], std.mem.sliceAsBytes(buffer[0..framesToWrite]));
-
-                const hr_release = c.IAudioRenderClient_ReleaseBuffer(render.?, framesToWrite, 0);
-                if (hr_release != 0) {
-                    std.debug.print("Audio: Failed to release WASAPI buffer: {d}\n", .{hr_release});
+            // Check if buffer is done (ready for new data)
+            // Buffer is ready if: it's done playing (WHDR_DONE), or it's not in queue (first use or done)
+            const is_done = (header.dwFlags & c.WHDR_DONE) != 0;
+            const is_in_queue = (header.dwFlags & c.WHDR_INQUEUE) != 0;
+            const is_ready = is_done or !is_in_queue;
+            
+            if (is_ready) {
+                // Generate audio samples into buffer
+                self.mutex.lock();
+                var sample_idx: usize = 0;
+                const buffer_len = self.waveout_buffer_data[current_idx].len / 2; // 16-bit samples
+                var samples: [4096]i16 = undefined;
+                while (sample_idx < buffer_len and sample_idx < samples.len) : (sample_idx += 1) {
+                    samples[sample_idx] = self.generateSample();
                 }
+                self.mutex.unlock();
 
-                if (framesToWrite > 0) {
-                    self.mutex.lock();
-                    defer self.mutex.unlock();
-                    if (!self.debug_wrote_after_toggle) {
-                        std.debug.print("Audio: Successfully wrote {d} frames to WASAPI\n", .{framesToWrite});
-                        self.debug_wrote_after_toggle = true;
-                    }
+                // Copy samples to buffer (16-bit = 2 bytes per sample)
+                @memcpy(
+                    self.waveout_buffer_data[current_idx][0..sample_idx * 2],
+                    std.mem.sliceAsBytes(samples[0..sample_idx]),
+                );
+
+                // Set buffer length and ensure header is prepared
+                header.dwBufferLength = @intCast(sample_idx * 2);
+                header.dwFlags = c.WHDR_PREPARED; // Mark as prepared before writing
+
+                // Write buffer to waveOut
+                const write_result = c.waveOutWrite(handle.?, header, @sizeOf(c.WAVEHDR));
+                if (write_result != 0) {
+                    std.debug.print("Audio: Failed to write waveOut buffer (error {d}), header flags: 0x{x}\n", .{ write_result, header.dwFlags });
+                    sleepMs(10);
+                    continue;
                 }
+                
+                // After successful write, the buffer should be in queue
+                // Check flags after a short delay to ensure it was queued
+                sleepMs(1);
+
+                // Move to next buffer
+                self.mutex.lock();
+                self.waveout_current_buffer = (current_idx + 1) % 4;
+                if (!self.debug_wrote_after_toggle) {
+                    std.debug.print("Audio: Successfully wrote {d} samples to waveOut\n", .{sample_idx});
+                    self.debug_wrote_after_toggle = true;
+                }
+                self.mutex.unlock();
             } else {
-                // Buffer not ready, sleep a bit
-                const delay_ns = 5 * std.time.ns_per_ms;
-                std.posix.nanosleep(0, delay_ns);
+                // Buffer still playing, wait a bit
+                sleepMs(5);
             }
         }
 
@@ -640,16 +594,18 @@ pub const AudioPlayer = struct {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            if (self.wasapi_client) |client| {
-                _ = c.IAudioClient_Stop(client);
-                _ = c.IAudioClient_Reset(client);
+            if (self.waveout_handle) |h| {
+                // Reset and unprepare all headers
+                _ = c.waveOutReset(h);
+                for (&self.waveout_headers) |*header| {
+                    _ = c.waveOutUnprepareHeader(h, header, @sizeOf(c.WAVEHDR));
+                }
+                _ = c.waveOutClose(h);
             }
-            self.wasapi_client = null;
-            self.wasapi_render = null;
+            self.waveout_handle = null;
         }
 
-        c.CoUninitialize();
-        std.debug.print("Audio: WASAPI thread exiting\n", .{});
+        std.debug.print("Audio: waveOut thread exiting\n", .{});
     }
 
     pub fn deinit(self: *AudioPlayer) void {
@@ -665,8 +621,7 @@ pub const AudioPlayer = struct {
         const thread_to_join = self.audio_thread;
         
         // Give the thread a moment to stop gracefully
-        const delay_ns = 100 * std.time.ns_per_ms;
-        std.posix.nanosleep(0, delay_ns);
+        sleepMs(100);
 
         // Safety check - audio_thread might be null if initialization failed
         if (thread_to_join) |thread| {
@@ -687,13 +642,15 @@ pub const AudioPlayer = struct {
             self.pcm_handle = null;
         }
 
-        // Cleanup WASAPI (Windows)
-        if (self.wasapi_client) |client| {
-            _ = c.IAudioClient_Stop(client);
-            _ = c.IAudioClient_Reset(client);
-            self.wasapi_client = null;
+        // Cleanup waveOut (Windows)
+        if (self.waveout_handle) |handle| {
+            _ = c.waveOutReset(handle);
+            for (&self.waveout_headers) |*header| {
+                _ = c.waveOutUnprepareHeader(handle, header, @sizeOf(c.WAVEHDR));
+            }
+            _ = c.waveOutClose(handle);
+            self.waveout_handle = null;
         }
-        self.wasapi_render = null;
     }
 
     pub fn play(self: *AudioPlayer) void {

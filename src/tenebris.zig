@@ -7,12 +7,12 @@ pub const Tenebris = struct {
 
     /// Obfuscated string decoder - strings are XOR encoded at compile time
     /// Equivalent to Swift's Tenebris.decode()
-    pub fn decode(comptime bytes: []const u8, comptime key: u8) []const u8 {
+    pub fn decode(comptime bytes: []const u8, comptime key: u8) [bytes.len]u8 {
         var decoded: [bytes.len]u8 = undefined;
         inline for (bytes, 0..) |byte, i| {
             decoded[i] = byte ^ key;
         }
-        return &decoded;
+        return decoded;
     }
 
     /// Obfuscated integer decoder - reconstructs integer from split parts

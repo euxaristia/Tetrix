@@ -1,9 +1,10 @@
 .build/
 .idea/
-.vscode
+.vscode/
 
 # Zig build artifacts
 .zig-cache/
 zig-out/
 simple_alsa_test
 test_audio
+main

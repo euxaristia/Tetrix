@@ -29,8 +29,10 @@ pub fn build(b: *std.Build) void {
     // Add GLFW include path so headers can be found
     exe.root_module.addIncludePath(glfw_include_path);
 
-    // Link platform-specific libraries
-    const target_os = builtin.target.os.tag;
+    // Link platform-specific libraries based on the actual build target
+    // For cross-compilation, we need to check the target's OS tag
+    // Use target.result.os.tag to get the TARGET platform (not host)
+    const target_os = target.result.os.tag;
     switch (target_os) {
         .windows => {
             // Windows-specific linker optimizations (matching Package.swift)
@@ -45,13 +47,45 @@ pub fn build(b: *std.Build) void {
             
             // For Windows: Compile GLFW C sources directly into the executable
             // This avoids needing a separate static library build step
-            // TODO: Update for Zig 0.16+ API when Windows cross-compilation is needed
-            // For now, Windows builds will need GLFW DLLs or a different approach
             exe.root_module.addIncludePath(glfw_dep.path("deps"));
             
-            // Link Windows audio libraries for WASAPI
-            exe.linkSystemLibrary("ole32");  // COM initialization
-            exe.linkSystemLibrary("avrt");   // Multimedia Class Scheduler Service (for low-latency audio)
+            // Common GLFW source files - compile directly into executable
+            const glfw_cflags = &.{"-D_GLFW_WIN32"};
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/context.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/init.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/input.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/monitor.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/platform.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/vulkan.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/window.c"), .flags = glfw_cflags });
+            
+            // Windows-specific source files
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_init.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_joystick.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_module.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_monitor.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_thread.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_time.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/win32_window.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/wgl_context.c"), .flags = glfw_cflags });
+            
+            // Null context stubs (needed for platform.c)
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_init.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_joystick.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_monitor.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/null_window.c"), .flags = glfw_cflags });
+            
+            // EGL and OSMesa stubs (optional, but referenced)
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/egl_context.c"), .flags = glfw_cflags });
+            exe.addCSourceFile(.{ .file = glfw_dep.path("src/osmesa_context.c"), .flags = glfw_cflags });
+            
+            // Link Windows system libraries
+            exe.linkSystemLibrary("opengl32");
+            exe.linkSystemLibrary("gdi32");
+            exe.linkSystemLibrary("user32");
+            
+            // Link Windows audio library (waveOut API)
+            exe.linkSystemLibrary("winmm");   // Windows Multimedia API (waveOut)
             // Windows doesn't need math library (it's part of libc)
         },
         .linux => {

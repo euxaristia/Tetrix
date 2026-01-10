@@ -38,7 +38,9 @@ pub fn main() !void {
     std.debug.print("Loaded high score from file: {d}\n", .{settings.high_score});
     
     // Initialize game components
-    const seed = @as(u64, @intCast(std.time.milliTimestamp()));
+    // Zig 0.16+ API: Use std.posix.gettimeofday() or std.c.time()
+    const time_c = @cImport(@cInclude("time.h"));
+    const seed = @as(u64, @intCast(time_c.time(null)));
     var game = TetrisEngine.init(seed);
     game.setHighScore(settings.high_score);
     std.debug.print("Set game.high_score to: {d}\n", .{game.high_score});
