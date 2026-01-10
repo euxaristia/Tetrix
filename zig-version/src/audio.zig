@@ -259,7 +259,13 @@ pub const AudioPlayer = struct {
             // Check both enabled and playing states
             if (!enabled or !playing) {
                 // Sleep when not playing to avoid busy-waiting
+                // Don't generate samples when disabled - this ensures clean state when re-enabled
                 std.Thread.sleep(10 * std.time.ns_per_ms);
+                continue;
+            }
+            
+            // Double-check state after sleep (in case it changed)
+            if (!self.enabled.load(.acquire) or !self.playing.load(.acquire)) {
                 continue;
             }
 
@@ -294,6 +300,11 @@ pub const AudioPlayer = struct {
             var ptr: [*]i16 = &buffer;
 
             while (frames_to_write > 0 and !self.should_stop.load(.acquire)) {
+                // Check if music is still enabled before writing
+                if (!self.enabled.load(.acquire) or !self.playing.load(.acquire)) {
+                    break;
+                }
+                
                 frames_written = c.snd_pcm_writei(handle, ptr, frames_to_write);
 
                 if (frames_written < 0) {
@@ -302,15 +313,25 @@ pub const AudioPlayer = struct {
                         // Expected shutdown, break silently
                         break;
                     }
-                    // EPIPE (-32) can happen during shutdown, but also check should_stop
+                    // Check if music was disabled during write
+                    if (!self.enabled.load(.acquire) or !self.playing.load(.acquire)) {
+                        break;
+                    }
+                    // EPIPE (-32) can happen during shutdown
                     if (frames_written == -32) {
                         // EPIPE - broken pipe, likely shutdown
                         break;
                     }
-                    // For other errors, try recovery
+                    // For other errors, try recovery and retry
                     std.debug.print("Audio: ALSA write error: {d}, attempting recovery\n", .{frames_written});
-                    _ = c.snd_pcm_recover(handle, @intCast(frames_written), 1);
-                    break;
+                    const recover_result = c.snd_pcm_recover(handle, @intCast(frames_written), 1);
+                    if (recover_result < 0) {
+                        // Recovery failed, skip this buffer
+                        std.debug.print("Audio: Recovery failed: {d}\n", .{recover_result});
+                        break;
+                    }
+                    // Recovery succeeded, retry the write
+                    continue;
                 } else {
                     const written: usize = @intCast(frames_written);
                     frames_to_write -= written;
