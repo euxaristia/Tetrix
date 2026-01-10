@@ -1,0 +1,11 @@
+.{
+    .name = .tetrix,
+    .version = "1.0.0",
+    .fingerprint = 0x296ab45cb342dd64,
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

@@ -1,3 +1,7 @@
 .build/
 .idea/
 .vscode
+
+# Zig build artifacts
+zig-version/.zig-cache/
+zig-version/zig-out/
