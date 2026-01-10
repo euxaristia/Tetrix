@@ -139,6 +139,7 @@ pub const AudioPlayer = struct {
     note_index: usize = 0,
     note_sample_position: u32 = 0,
     pcm_handle: ?*c.snd_pcm_t = null,
+    debug_wrote_after_toggle: bool = false,
 
     const samples_per_beat: u32 = @intFromFloat(@as(f32, @floatFromInt(SAMPLE_RATE)) * 60.0 / TEMPO_BPM);
 
@@ -262,6 +263,10 @@ pub const AudioPlayer = struct {
                 std.debug.print("Audio: state changed - enabled={}->{}, playing={}->{}\n", .{last_enabled, enabled, last_playing, playing});
                 last_enabled = enabled;
                 last_playing = playing;
+                // Reset debug flag on state change
+                self.mutex.lock();
+                self.debug_wrote_after_toggle = false;
+                self.mutex.unlock();
             }
 
             // Check both enabled and playing states
@@ -282,12 +287,23 @@ pub const AudioPlayer = struct {
                 continue;
             }
 
-            // std.debug.print("Audio: Playing...\n", .{});
+            // If we're resuming playback after being stopped, prepare ALSA handle
+            if (enabled_after_sleep and playing_after_sleep and !last_playing) {
+                std.debug.print("Audio: Resuming playback, preparing ALSA handle\n", .{});
+                self.mutex.lock();
+                if (self.pcm_handle) |h| {
+                    const prepare_result = c.snd_pcm_prepare(h);
+                    if (prepare_result < 0) {
+                        std.debug.print("Audio: Failed to prepare ALSA handle: {d}\n", .{prepare_result});
+                    } else {
+                        std.debug.print("Audio: ALSA handle prepared successfully\n", .{});
+                    }
+                }
+                self.mutex.unlock();
+            }
 
             // Debug: Show when audio is actually playing
-            // std.debug.print("Audio: Playing (enabled={})\n", .{enabled});
-
-            // std.debug.print("Audio: Generating and writing audio...\n", .{});
+            std.debug.print("Audio: Generating and writing audio (enabled={}, playing={})\n", .{enabled_after_sleep, playing_after_sleep});
 
             // Generate audio samples
             self.mutex.lock();
@@ -353,10 +369,17 @@ pub const AudioPlayer = struct {
                     frames_to_write -= written;
                     ptr += written;
 
-                    // Debug: Show that we're writing audio
-                    // if (written > 0) {
-                    //     std.debug.print("Audio: Wrote {d} frames\n", .{written});
-                    // }
+                    // Debug: Show that we're writing audio (only first time after state change)
+                    self.mutex.lock();
+                    if (written > 0 and !self.debug_wrote_after_toggle) {
+                        std.debug.print("Audio: Successfully wrote {d} frames to ALSA\n", .{written});
+                        self.debug_wrote_after_toggle = true;
+                    }
+                    // Reset flag when buffer is complete
+                    if (frames_to_write == 0) {
+                        self.debug_wrote_after_toggle = false;
+                    }
+                    self.mutex.unlock();
                 }
             }
         }
