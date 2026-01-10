@@ -12,10 +12,10 @@ cd "$PROJECT_ROOT"
 echo "Building obfuscated Windows release..."
 
 # Build with maximum optimization and obfuscation
+# ReleaseSmall automatically strips symbols, so --strip flag is not needed
 zig build \
     -Dtarget=x86_64-windows \
-    -Doptimize=ReleaseSmall \
-    --strip
+    -Doptimize=ReleaseSmall
 
 echo ""
 echo "✓ Build complete!"
