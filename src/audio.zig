@@ -285,9 +285,17 @@ pub const AudioPlayer = struct {
         // Audio generation loop
         var buffer: [512]i16 = undefined;
 
-        // Track last state for debug output
-        var last_enabled: bool = true;
-        var last_playing: bool = true;
+        // Track last state for debug output - initialize to current state
+        const initial_enabled = self.enabled.load(.acquire);
+        const initial_playing = self.playing.load(.acquire);
+        var last_enabled: bool = initial_enabled;
+        var last_playing: bool = initial_playing;
+        
+        // Initialize fade volume based on initial state
+        self.mutex.lock();
+        self.fade_volume = if (initial_enabled and initial_playing) 1.0 else 0.0;
+        self.mutex.unlock();
+        
         const FADE_DURATION_MS: u32 = 200; // 200ms fade for smoother transitions (increased to reduce popping)
         const FADE_DURATION_SAMPLES: u32 = (FADE_DURATION_MS * SAMPLE_RATE) / 1000; // ~8820 samples at 44.1kHz
 
@@ -560,8 +568,17 @@ pub const AudioPlayer = struct {
         std.debug.print("Audio: waveOut initialized successfully\n", .{});
 
         // Audio generation loop
-        var last_enabled: bool = true;
-        var last_playing: bool = true;
+        // Track last state - initialize to current state
+        const initial_enabled = self.enabled.load(.acquire);
+        const initial_playing = self.playing.load(.acquire);
+        var last_enabled: bool = initial_enabled;
+        var last_playing: bool = initial_playing;
+        
+        // Initialize fade volume based on initial state
+        self.mutex.lock();
+        self.fade_volume = if (initial_enabled and initial_playing) 1.0 else 0.0;
+        self.mutex.unlock();
+        
         const FADE_DURATION_MS: u32 = 200; // 200ms fade for smoother transitions (increased to reduce popping)
         const FADE_DURATION_SAMPLES: u32 = (FADE_DURATION_MS * SAMPLE_RATE) / 1000; // ~8820 samples at 44.1kHz
 
