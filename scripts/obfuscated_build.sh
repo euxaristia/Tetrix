@@ -17,15 +17,23 @@ zig build \
     -Dtarget=x86_64-windows \
     -Doptimize=ReleaseSmall
 
-echo ""
-echo "✓ Build complete!"
-echo "  Binary: $PROJECT_ROOT/zig-out/bin/tetrix.exe"
+# Rename to tetrix-tenebrated.exe for obfuscated builds
+if [ -f "$PROJECT_ROOT/zig-out/bin/tetrix.exe" ]; then
+    mv "$PROJECT_ROOT/zig-out/bin/tetrix.exe" "$PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"
+    echo ""
+    echo "✓ Build complete!"
+    echo "  Binary: $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe"
+else
+    echo "❌ Build failed: tetrix.exe not found"
+    exit 1
+fi
 echo ""
 echo "Obfuscation features enabled:"
 echo "  - ReleaseSmall optimization (smallest binary size)"
 echo "  - Strip symbols (removes debug info)"
 echo "  - Tenebris string obfuscation (compile-time XOR encoding)"
 echo ""
+echo ""
 echo "To verify obfuscation, run:"
-echo "  strings $PROJECT_ROOT/zig-out/bin/tetrix.exe | grep -i 'tetrix\|paused\|game over'"
+echo "  strings $PROJECT_ROOT/zig-out/bin/tetrix-tenebrated.exe | grep -i 'tetrix\|paused\|game over'"
 echo "  (Should return nothing if obfuscation is working)"
