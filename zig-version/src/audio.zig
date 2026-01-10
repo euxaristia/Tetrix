@@ -60,7 +60,7 @@ const melody = [_]Note{
 
 pub const AudioPlayer = struct {
     enabled: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
-    playing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    playing: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
     should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     audio_thread: ?std.Thread = null,
     mutex: std.Thread.Mutex = .{},
@@ -167,22 +167,22 @@ pub const AudioPlayer = struct {
 
         while (!self.should_stop.load(.acquire)) {
             const enabled = self.enabled.load(.acquire);
-            // const playing = self.playing.load(.acquire); // TEMPORARY: Disabled due to sync issue
+            const playing = self.playing.load(.acquire);
 
             // Debug: Show audio state changes
             // std.debug.print("Audio: enabled={}, playing={}\n", .{enabled, playing});
 
-            // TEMPORARY: Ignore playing state due to atomic synchronization issue
-            // TODO: Fix the atomic flag synchronization properly
-            // For now, play whenever enabled (which is controlled by toggle)
-            if (!enabled) {
-                // Sleep when disabled to avoid busy-waiting
+            // Check both enabled and playing states
+            if (!enabled or !playing) {
+                // Sleep when not playing to avoid busy-waiting
                 std.Thread.sleep(10 * std.time.ns_per_ms);
                 continue;
             }
 
-            // Debug: Show when audio is actually playing
             // std.debug.print("Audio: Playing...\n", .{});
+
+            // Debug: Show when audio is actually playing
+            // std.debug.print("Audio: Playing (enabled={})\n", .{enabled});
 
             // std.debug.print("Audio: Generating and writing audio...\n", .{});
 
@@ -193,6 +193,16 @@ pub const AudioPlayer = struct {
                 buffer[sample_idx] = self.generateSample();
             }
             self.mutex.unlock();
+
+            // Debug: Check if we generated non-zero samples
+            var has_audio = false;
+            for (buffer) |sample| {
+                if (sample != 0) {
+                    has_audio = true;
+                    break;
+                }
+            }
+            // std.debug.print("Audio: Generated buffer has audio: {}\n", .{has_audio});
 
             // Write to ALSA (blocking)
             var frames_written: c.snd_pcm_sframes_t = 0;
@@ -239,6 +249,7 @@ pub const AudioPlayer = struct {
 
         // Stop playing and wait for the thread to finish
         self.playing.store(false, .release);
+        self.enabled.store(false, .release);
 
         // Give the thread a moment to stop gracefully
         std.Thread.sleep(100 * std.time.ns_per_ms);
@@ -268,7 +279,9 @@ pub const AudioPlayer = struct {
 
     pub fn toggle(self: *AudioPlayer) void {
         const current = self.enabled.load(.acquire);
-        self.enabled.store(!current, .release);
+        const new_state = !current;
+        self.enabled.store(new_state, .release);
+        self.playing.store(new_state, .release);
     }
 
     pub fn update(self: *AudioPlayer) void {
