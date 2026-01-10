@@ -11,12 +11,12 @@ pub const Settings = struct {
     pub fn load(allocator: std.mem.Allocator) Settings {
         var settings = Settings{};
 
-        // Get home directory
-        const home = std.posix.getenv("HOME") orelse return settings;
+        // Get home directory (cross-platform)
+        const home = std.process.getEnvVarOwned(allocator, "HOME") catch return settings;
+        defer allocator.free(home);
 
         // Build full path
         const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return settings;
-        defer allocator.free(path);
 
         // Read file
         const file = std.fs.openFileAbsolute(path, .{}) catch return settings;
@@ -95,8 +95,9 @@ pub const Settings = struct {
     }
 
     pub fn save(self: *const Settings, allocator: std.mem.Allocator) void {
-        // Get home directory
-        const home = std.posix.getenv("HOME") orelse return;
+        // Get home directory (cross-platform)
+        const home = std.process.getEnvVarOwned(allocator, "HOME") catch return;
+        defer allocator.free(home);
 
         // Ensure .config directory exists
         const config_dir = std.fmt.allocPrint(allocator, "{s}/.config", .{home}) catch return;

@@ -1,9 +1,16 @@
-// C library bindings for GLFW, OpenGL, and ALSA
-const c_bindings = @cImport({
-    @cInclude("GLFW/glfw3.h");
-    @cInclude("GL/gl.h");
-    @cInclude("alsa/asoundlib.h");
-});
+// C library bindings for GLFW, OpenGL, and ALSA (Linux only)
+const builtin = @import("builtin");
+const c_bindings = if (builtin.target.os.tag == .linux)
+    @cImport({
+        @cInclude("GLFW/glfw3.h");
+        @cInclude("GL/gl.h");
+        @cInclude("alsa/asoundlib.h");
+    })
+else
+    @cImport({
+        @cInclude("GLFW/glfw3.h");
+        @cInclude("GL/gl.h");
+    });
 
 // Re-export all C symbols
 pub const GLFWwindow = c_bindings.GLFWwindow;
@@ -70,30 +77,51 @@ pub const GL_ONE_MINUS_SRC_ALPHA = c_bindings.GL_ONE_MINUS_SRC_ALPHA;
 pub const GL_PROJECTION = c_bindings.GL_PROJECTION;
 pub const GL_MODELVIEW = c_bindings.GL_MODELVIEW;
 
-// ALSA
-pub const snd_pcm_t = c_bindings.snd_pcm_t;
-pub const snd_pcm_hw_params_t = c_bindings.snd_pcm_hw_params_t;
-pub const snd_pcm_open = c_bindings.snd_pcm_open;
-pub const snd_pcm_close = c_bindings.snd_pcm_close;
-pub const snd_pcm_drain = c_bindings.snd_pcm_drain;
-pub const snd_pcm_prepare = c_bindings.snd_pcm_prepare;
-pub const snd_pcm_writei = c_bindings.snd_pcm_writei;
-pub const snd_pcm_recover = c_bindings.snd_pcm_recover;
-pub const snd_pcm_hw_params_malloc = c_bindings.snd_pcm_hw_params_malloc;
-pub const snd_pcm_hw_params_free = c_bindings.snd_pcm_hw_params_free;
-pub const snd_pcm_hw_params_any = c_bindings.snd_pcm_hw_params_any;
-pub const snd_pcm_hw_params_set_access = c_bindings.snd_pcm_hw_params_set_access;
-pub const snd_pcm_hw_params_set_format = c_bindings.snd_pcm_hw_params_set_format;
-pub const snd_pcm_hw_params_set_channels = c_bindings.snd_pcm_hw_params_set_channels;
-pub const snd_pcm_hw_params_set_rate_near = c_bindings.snd_pcm_hw_params_set_rate_near;
-pub const snd_pcm_hw_params = c_bindings.snd_pcm_hw_params;
+// ALSA (Linux only) - Windows builds will need audio disabled or Windows audio API implemented
+const AlsaPcmT = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_t else *opaque {};
+const AlsaHwParamsT = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_t else *opaque {};
 
-pub const SND_PCM_STREAM_PLAYBACK = c_bindings.SND_PCM_STREAM_PLAYBACK;
-pub const SND_PCM_ACCESS_RW_INTERLEAVED = c_bindings.SND_PCM_ACCESS_RW_INTERLEAVED;
-pub const SND_PCM_FORMAT_S16_LE = c_bindings.SND_PCM_FORMAT_S16_LE;
-pub const SND_PCM_FORMAT_S32_LE = c_bindings.SND_PCM_FORMAT_S32_LE;
-pub const SND_PCM_NONBLOCK = c_bindings.SND_PCM_NONBLOCK;
-pub const snd_pcm_uframes_t = c_bindings.snd_pcm_uframes_t;
-pub const snd_pcm_hw_params_set_buffer_size_near = c_bindings.snd_pcm_hw_params_set_buffer_size_near;
-pub const snd_pcm_hw_params_set_period_size_near = c_bindings.snd_pcm_hw_params_set_period_size_near;
-pub const snd_pcm_sframes_t = c_bindings.snd_pcm_sframes_t;
+pub const snd_pcm_t = AlsaPcmT;
+pub const snd_pcm_hw_params_t = AlsaHwParamsT;
+
+fn stub_snd_pcm_open(_: ?*?*AlsaPcmT, _: [*:0]const u8, _: c_int, _: c_int) c_int { return -1; }
+fn stub_snd_pcm_close(_: ?*AlsaPcmT) c_int { return 0; }
+fn stub_snd_pcm_drain(_: ?*AlsaPcmT) c_int { return 0; }
+fn stub_snd_pcm_prepare(_: ?*AlsaPcmT) c_int { return -1; }
+fn stub_snd_pcm_writei(_: ?*AlsaPcmT, _: ?*const anyopaque, _: u64) i64 { return -1; }
+fn stub_snd_pcm_recover(_: ?*AlsaPcmT, _: c_int, _: c_int) c_int { return -1; }
+fn stub_snd_pcm_hw_params_malloc(_: ?*?*AlsaHwParamsT) c_int { return -1; }
+fn stub_snd_pcm_hw_params_free(_: ?*AlsaHwParamsT) void {}
+fn stub_snd_pcm_hw_params_any(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT) c_int { return -1; }
+fn stub_snd_pcm_hw_params_set_access(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_int) c_int { return -1; }
+fn stub_snd_pcm_hw_params_set_format(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_int) c_int { return -1; }
+fn stub_snd_pcm_hw_params_set_channels(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_uint) c_int { return -1; }
+fn stub_snd_pcm_hw_params_set_rate_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*c_uint, _: ?*c_int) c_int { return -1; }
+fn stub_snd_pcm_hw_params(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT) c_int { return -1; }
+fn stub_snd_pcm_hw_params_set_buffer_size_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*u64) c_int { return -1; }
+fn stub_snd_pcm_hw_params_set_period_size_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*u64, _: ?*c_int) c_int { return -1; }
+
+pub const snd_pcm_open = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_open else stub_snd_pcm_open;
+pub const snd_pcm_close = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_close else stub_snd_pcm_close;
+pub const snd_pcm_drain = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_drain else stub_snd_pcm_drain;
+pub const snd_pcm_prepare = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_prepare else stub_snd_pcm_prepare;
+pub const snd_pcm_writei = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_writei else stub_snd_pcm_writei;
+pub const snd_pcm_recover = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_recover else stub_snd_pcm_recover;
+pub const snd_pcm_hw_params_malloc = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_malloc else stub_snd_pcm_hw_params_malloc;
+pub const snd_pcm_hw_params_free = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_free else stub_snd_pcm_hw_params_free;
+pub const snd_pcm_hw_params_any = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_any else stub_snd_pcm_hw_params_any;
+pub const snd_pcm_hw_params_set_access = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_set_access else stub_snd_pcm_hw_params_set_access;
+pub const snd_pcm_hw_params_set_format = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_set_format else stub_snd_pcm_hw_params_set_format;
+pub const snd_pcm_hw_params_set_channels = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_set_channels else stub_snd_pcm_hw_params_set_channels;
+pub const snd_pcm_hw_params_set_rate_near = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_set_rate_near else stub_snd_pcm_hw_params_set_rate_near;
+pub const snd_pcm_hw_params = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params else stub_snd_pcm_hw_params;
+pub const snd_pcm_hw_params_set_buffer_size_near = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_set_buffer_size_near else stub_snd_pcm_hw_params_set_buffer_size_near;
+pub const snd_pcm_hw_params_set_period_size_near = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw_params_set_period_size_near else stub_snd_pcm_hw_params_set_period_size_near;
+
+pub const SND_PCM_STREAM_PLAYBACK = if (builtin.target.os.tag == .linux) c_bindings.SND_PCM_STREAM_PLAYBACK else @as(c_int, 0);
+pub const SND_PCM_ACCESS_RW_INTERLEAVED = if (builtin.target.os.tag == .linux) c_bindings.SND_PCM_ACCESS_RW_INTERLEAVED else @as(c_int, 0);
+pub const SND_PCM_FORMAT_S16_LE = if (builtin.target.os.tag == .linux) c_bindings.SND_PCM_FORMAT_S16_LE else @as(c_int, 0);
+pub const SND_PCM_FORMAT_S32_LE = if (builtin.target.os.tag == .linux) c_bindings.SND_PCM_FORMAT_S32_LE else @as(c_int, 0);
+pub const SND_PCM_NONBLOCK = if (builtin.target.os.tag == .linux) c_bindings.SND_PCM_NONBLOCK else @as(c_int, 0);
+pub const snd_pcm_uframes_t = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_uframes_t else u64;
+pub const snd_pcm_sframes_t = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_sframes_t else i64;
