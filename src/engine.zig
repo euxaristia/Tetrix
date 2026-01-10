@@ -29,11 +29,14 @@ pub const TetrisEngine = struct {
     drop_interval: f64,
     prng: std.Random.DefaultPrng,
     pending_lines: u32, // Lines waiting to be scored after animation
+    lock_delay_timer: f64, // Timer for lock delay when piece touches ground
+    is_touching_ground: bool, // Whether piece is currently touching ground
 
     const SPAWN_X: i32 = 4;
     const SPAWN_Y: i32 = 0;
     const BASE_DROP_INTERVAL: f64 = 1.0;
     const MIN_DROP_INTERVAL: f64 = 0.1;
+    const LOCK_DELAY: f64 = 0.5; // 500ms lock delay (classic Tetris standard)
 
     pub fn init(seed: u64) TetrisEngine {
         var engine = TetrisEngine{
@@ -50,6 +53,8 @@ pub const TetrisEngine = struct {
             .drop_interval = BASE_DROP_INTERVAL,
             .prng = std.Random.DefaultPrng.init(seed),
             .pending_lines = 0,
+            .lock_delay_timer = 0,
+            .is_touching_ground = false,
         };
 
         // Now generate random pieces using the stored prng
@@ -76,6 +81,8 @@ pub const TetrisEngine = struct {
         self.drop_timer = 0;
         self.drop_interval = BASE_DROP_INTERVAL;
         self.pending_lines = 0;
+        self.lock_delay_timer = 0;
+        self.is_touching_ground = false;
         self.spawnNewPiece();
     }
 
@@ -96,12 +103,45 @@ pub const TetrisEngine = struct {
             return;
         }
 
+        // Check if piece can move down
+        const can_move_down = if (self.current_piece) |piece| blk: {
+            const test_piece = piece.moved(0, 1);
+            break :blk self.game_board.canPlace(test_piece);
+        } else false;
+
+        // Update lock delay timer if piece is touching ground
+        if (!can_move_down) {
+            if (!self.is_touching_ground) {
+                // Piece just touched ground, start lock delay
+                self.is_touching_ground = true;
+                self.lock_delay_timer = 0;
+            } else {
+                // Piece is still touching ground, increment lock delay timer
+                self.lock_delay_timer += delta_time;
+                if (self.lock_delay_timer >= LOCK_DELAY) {
+                    // Lock delay expired, lock the piece
+                    self.lockPiece();
+                    return;
+                }
+            }
+        } else {
+            // Piece can move down, reset lock delay state
+            if (self.is_touching_ground) {
+                self.is_touching_ground = false;
+                self.lock_delay_timer = 0;
+            }
+        }
+
         // Update drop timer
         self.drop_timer += delta_time;
         if (self.drop_timer >= self.drop_interval) {
             self.drop_timer = 0;
             if (!self.moveDown()) {
-                self.lockPiece();
+                // moveDown() will handle locking if lock delay expired
+                // But if lock delay hasn't started yet, we need to check
+                if (!self.is_touching_ground) {
+                    self.lockPiece();
+                }
             }
         }
     }
@@ -118,6 +158,9 @@ pub const TetrisEngine = struct {
         self.current_piece = new_piece;
         self.next_piece = self.next_next_piece;
         self.next_next_piece = self.randomPiece();
+        // Reset lock delay state for new piece
+        self.is_touching_ground = false;
+        self.lock_delay_timer = 0;
     }
 
     fn lockPiece(self: *TetrisEngine) void {
@@ -168,6 +211,8 @@ pub const TetrisEngine = struct {
     // Movement functions
     pub fn moveLeft(self: *TetrisEngine) bool {
         if (self.state != .playing or self.game_board.is_clearing) return false;
+        // Don't allow movement if lock delay has expired
+        if (self.is_touching_ground and self.lock_delay_timer >= LOCK_DELAY) return false;
         if (self.current_piece) |piece| {
             const new_piece = piece.moved(-1, 0);
             if (self.game_board.canPlace(new_piece)) {
@@ -180,6 +225,8 @@ pub const TetrisEngine = struct {
 
     pub fn moveRight(self: *TetrisEngine) bool {
         if (self.state != .playing or self.game_board.is_clearing) return false;
+        // Don't allow movement if lock delay has expired
+        if (self.is_touching_ground and self.lock_delay_timer >= LOCK_DELAY) return false;
         if (self.current_piece) |piece| {
             const new_piece = piece.moved(1, 0);
             if (self.game_board.canPlace(new_piece)) {
@@ -204,6 +251,8 @@ pub const TetrisEngine = struct {
 
     pub fn rotate(self: *TetrisEngine) bool {
         if (self.state != .playing or self.game_board.is_clearing) return false;
+        // Don't allow rotation if lock delay has expired
+        if (self.is_touching_ground and self.lock_delay_timer >= LOCK_DELAY) return false;
         if (self.current_piece) |piece| {
             var new_piece = piece.rotated();
 
