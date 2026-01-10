@@ -220,61 +220,57 @@ pub const Renderer = struct {
         const panel_x = PADDING + BOARD_PIXEL_WIDTH + 20;
         var y: i32 = PADDING;
 
-        // Score
+        // Score (matching Swift: "Score: {value}" on same line)
         self.setColor(TEXT_COLOR);
-        self.drawText("Score:", panel_x, y);
-        y += 20;
-        self.drawNumber(game.score, panel_x, y);
+        self.drawTextWithNumber("Score: ", game.score, panel_x, y);
         y += 30;
 
         // High Score
-        self.drawText("High:", panel_x, y);
-        y += 20;
-        self.drawNumber(game.high_score, panel_x, y);
+        self.drawTextWithNumber("High: ", game.high_score, panel_x, y);
         y += 30;
 
         // Lines
-        self.drawText("Lines:", panel_x, y);
-        y += 20;
-        self.drawNumber(game.lines_cleared, panel_x, y);
+        self.drawTextWithNumber("Lines: ", game.lines_cleared, panel_x, y);
         y += 30;
 
         // Level
-        self.drawText("Level:", panel_x, y);
-        y += 20;
-        self.drawNumber(game.level, panel_x, y);
+        self.drawTextWithNumber("Level: ", game.level, panel_x, y);
         y += 30;
 
         // FPS
-        const fps_color = if (self.fps >= 170.0) Color{ .r = 0, .g = 255, .b = 0 } else Color{ .r = 255, .g = 165, .b = 0 };
+        const fps_color = if (self.fps >= 170.0) Color{ .r = 100, .g = 255, .b = 100 } else Color{ .r = 255, .g = 200, .b = 100 };
         self.setColor(fps_color);
-        self.drawText("FPS:", panel_x, y);
+        var fps_buf: [32]u8 = undefined;
+        const fps_str = std.fmt.bufPrint(&fps_buf, "FPS: {d:.1}", .{self.fps}) catch "FPS: --";
+        self.drawText(fps_str, panel_x, y);
         y += 20;
-        self.drawNumber(@intFromFloat(self.fps), panel_x, y);
-        y += 30;
 
         // Renderer
-        self.setColor(TEXT_COLOR);
-        self.drawText("Renderer:", panel_x, y);
-        y += 20;
-        self.drawText("OpenGL", panel_x, y);
-        y += 40;
+        self.setColor(Color{ .r = 160, .g = 200, .b = 255 });
+        self.drawText("Renderer: OpenGL", panel_x, y);
+        y += 30;
 
         // Next piece
+        self.setColor(TEXT_COLOR);
         self.drawText("Next:", panel_x, y);
-        y += 25;
-        self.drawPreviewPiece(game.next_piece, panel_x + 30, y, 1.0);
-        y += 80;
+        y += 30;
+        self.drawPreviewPiece(game.next_piece, panel_x, y, 1.0);
+        y += 70;
 
         // Next next piece
-        self.setColor(Color{ .r = 150, .g = 150, .b = 150 });
+        self.setColor(Color{ .r = 200, .g = 200, .b = 200 });
         self.drawText("After:", panel_x, y);
-        y += 25;
-        self.drawPreviewPiece(game.next_next_piece, panel_x + 30, y, 0.6);
-        y += 60;
+        y += 30;
+        self.drawPreviewPiece(game.next_next_piece, panel_x, y, 0.6);
 
-        // Controls
-        self.drawControls(panel_x, WINDOW_HEIGHT - 180);
+        // Controls (positioned from bottom)
+        self.drawControls(panel_x, WINDOW_HEIGHT - 140);
+    }
+
+    fn drawTextWithNumber(self: *Renderer, label: []const u8, num: u32, x: i32, y: i32) void {
+        var buf: [32]u8 = undefined;
+        const str = std.fmt.bufPrint(&buf, "{s}{d}", .{ label, num }) catch return;
+        self.drawText(str, x, y);
     }
 
     fn drawPreviewPiece(self: *Renderer, piece_type: TetrominoType, x: i32, y: i32, scale: f32) void {
@@ -292,40 +288,42 @@ pub const Renderer = struct {
 
     fn drawControls(self: *Renderer, x: i32, start_y: i32) void {
         var y = start_y;
-        self.setColor(TEXT_COLOR);
+        self.setColor(Color{ .r = 150, .g = 150, .b = 150 });
         self.drawText("Controls:", x, y);
-        y += 18;
+        y += 20;
 
         if (self.use_controller) {
-            self.setColor(Color{ .r = 180, .g = 180, .b = 180 });
+            self.setColor(Color{ .r = 130, .g = 130, .b = 130 });
             self.drawText("D-Pad: Move", x, y);
-            y += 15;
+            y += 20;
             self.drawText("D-Pad Dn: Drop", x, y);
-            y += 15;
+            y += 20;
             self.drawText("Up/X: Rotate", x, y);
-            y += 15;
+            y += 20;
             self.drawText("Opt: Pause", x, y);
-            y += 15;
+            y += 20;
             self.drawText("Share: Restart", x, y);
+            y += 20;
         } else {
-            self.setColor(Color{ .r = 180, .g = 180, .b = 180 });
+            self.setColor(Color{ .r = 130, .g = 130, .b = 130 });
             self.drawText("WASD/Arrows", x, y);
-            y += 15;
+            y += 20;
             self.drawText("Space: Drop", x, y);
-            y += 15;
+            y += 20;
             self.drawText("ESC: Pause", x, y);
-            y += 15;
+            y += 20;
             self.drawText("F11: Fullscreen", x, y);
+            y += 20;
         }
 
-        y += 15;
+        self.setColor(Color{ .r = 130, .g = 130, .b = 130 });
         self.drawText("M: Music", x, y);
         if (self.music_enabled) {
-            self.setColor(Color{ .r = 0, .g = 255, .b = 0 });
-            self.drawText("(ON)", x + 70, y);
+            self.setColor(Color{ .r = 100, .g = 255, .b = 100 });
+            self.drawText("(ON)", x + 90, y);
         } else {
-            self.setColor(Color{ .r = 255, .g = 0, .b = 0 });
-            self.drawText("(OFF)", x + 70, y);
+            self.setColor(Color{ .r = 255, .g = 100, .b = 100 });
+            self.drawText("(OFF)", x + 90, y);
         }
     }
 
@@ -334,40 +332,47 @@ pub const Renderer = struct {
         self.setColor(Color{ .r = 0, .g = 0, .b = 0, .a = 150 });
         self.drawRect(PADDING, PADDING, BOARD_PIXEL_WIDTH, BOARD_PIXEL_HEIGHT);
 
-        // PAUSED text (centered)
+        // PAUSED text (centered) - 6 chars * 15 pixels / 2 = 45
         self.setColor(Color{ .r = 255, .g = 255, .b = 0 });
         const text = "PAUSED";
-        const text_x = PADDING + BOARD_PIXEL_WIDTH / 2 - @as(i32, @intCast(text.len * 5));
+        const text_x = PADDING + BOARD_PIXEL_WIDTH / 2 - 45;
         const text_y = PADDING + BOARD_PIXEL_HEIGHT / 2 - 20;
         self.drawTextLarge(text, text_x, text_y);
 
         // Resume instruction
-        self.setColor(Color{ .r = 150, .g = 150, .b = 150 });
+        self.setColor(Color{ .r = 200, .g = 200, .b = 200 });
         const instruction = if (self.use_controller) "Press Options" else "Press ESC";
-        const inst_x = PADDING + BOARD_PIXEL_WIDTH / 2 - @as(i32, @intCast(instruction.len * 3));
-        self.drawText(instruction, inst_x, text_y + 30);
+        const inst_len: i32 = @intCast(instruction.len);
+        const inst_x = PADDING + BOARD_PIXEL_WIDTH / 2 - @divTrunc(inst_len * 10, 2);
+        self.drawText(instruction, inst_x, text_y + 40);
     }
 
     fn drawGameOverOverlay(self: *Renderer) void {
         // Semi-transparent background with border
+        const box_width: i32 = 200;
+        const box_height: i32 = 80;
+        const box_x = PADDING + @divTrunc(BOARD_PIXEL_WIDTH, 2) - @divTrunc(box_width, 2);
+        const box_y = PADDING + @divTrunc(BOARD_PIXEL_HEIGHT, 2) - @divTrunc(box_height, 2) - 10;
+
         self.setColor(Color{ .r = 0, .g = 0, .b = 0, .a = 200 });
-        self.drawRect(PADDING + 20, PADDING + BOARD_PIXEL_HEIGHT / 2 - 50, BOARD_PIXEL_WIDTH - 40, 100);
+        self.drawRect(box_x - 4, box_y - 4, box_width + 8, box_height + 8);
 
-        self.setColor(BOARD_BORDER_COLOR);
-        self.drawRectOutline(PADDING + 20, PADDING + BOARD_PIXEL_HEIGHT / 2 - 50, BOARD_PIXEL_WIDTH - 40, 100);
+        self.setColor(Color{ .r = 30, .g = 30, .b = 40, .a = 240 });
+        self.drawRect(box_x, box_y, box_width, box_height);
 
-        // GAME OVER text
+        // GAME OVER text - 9 chars * 15 pixels / 2 = 67
         self.setColor(Color{ .r = 255, .g = 0, .b = 0 });
         const text = "GAME OVER";
-        const text_x = PADDING + BOARD_PIXEL_WIDTH / 2 - @as(i32, @intCast(text.len * 5));
-        const text_y = PADDING + BOARD_PIXEL_HEIGHT / 2 - 20;
+        const text_x = PADDING + BOARD_PIXEL_WIDTH / 2 - 67;
+        const text_y = box_y + 15;
         self.drawTextLarge(text, text_x, text_y);
 
         // Restart instruction
-        self.setColor(Color{ .r = 150, .g = 150, .b = 150 });
+        self.setColor(Color{ .r = 200, .g = 200, .b = 200 });
         const instruction = if (self.use_controller) "Press Share" else "Press R";
-        const inst_x = PADDING + BOARD_PIXEL_WIDTH / 2 - @as(i32, @intCast(instruction.len * 3));
-        self.drawText(instruction, inst_x, text_y + 30);
+        const inst_len: i32 = @intCast(instruction.len);
+        const inst_x = PADDING + BOARD_PIXEL_WIDTH / 2 - @divTrunc(inst_len * 10, 2);
+        self.drawText(instruction, inst_x, box_y + 50);
     }
 
     // Simple bitmap font rendering using OpenGL lines
@@ -392,23 +397,17 @@ pub const Renderer = struct {
     fn drawText(self: *Renderer, text: []const u8, x: i32, y: i32) void {
         var offset: i32 = 0;
         for (text) |char| {
-            self.drawChar(char, x + offset, y, 1.5);
-            offset += 8;
+            self.drawChar(char, x + offset, y, 2.0);
+            offset += 10;
         }
     }
 
     fn drawTextLarge(self: *Renderer, text: []const u8, x: i32, y: i32) void {
         var offset: i32 = 0;
         for (text) |char| {
-            self.drawChar(char, x + offset, y, 2.5);
-            offset += 12;
+            self.drawChar(char, x + offset, y, 3.0);
+            offset += 15;
         }
-    }
-
-    fn drawNumber(self: *Renderer, num: u32, x: i32, y: i32) void {
-        var buf: [16]u8 = undefined;
-        const str = std.fmt.bufPrint(&buf, "{d}", .{num}) catch return;
-        self.drawText(str, x, y);
     }
 };
 
