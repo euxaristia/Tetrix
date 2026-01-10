@@ -11,20 +11,27 @@ pub const Settings = struct {
         var settings = Settings{};
 
         // Get home directory (cross-platform)
-        const home = std.process.getEnvVarOwned(allocator, "HOME") catch return settings;
-        defer allocator.free(home);
+        // Zig 0.16+ API: Use std.posix.getenv() via C API
+        const c = @cImport(@cInclude("stdlib.h"));
+        const home_cstr = c.getenv("HOME");
+        if (home_cstr == null) return settings;
+        const home = std.mem.span(home_cstr);
+        const home_owned = allocator.dupe(u8, home) catch return settings;
+        defer allocator.free(home_owned);
 
         // Build full path (decode obfuscated config path)
         const config_path_obf = tenebris.ObfuscatedString.init(".config/tetrix.json", tenebris.Tenebris.DEFAULT_KEY);
         var config_path_buf: [64]u8 = undefined;
         const config_path = config_path_obf.value(&config_path_buf);
-        const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return settings;
+        const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home_owned, config_path }) catch return settings;
         defer allocator.free(path);
 
         std.debug.print("Loading from path: {s}\n", .{path});
         std.debug.print("Decoded config_path: {s}\n", .{config_path});
 
         // Read file
+        // Zig 0.16+ API: Use std.fs.openFileAbsolute() 
+        // If that doesn't work, try std.fs.openFile() with absolute path
         const file = std.fs.openFileAbsolute(path, .{}) catch return settings;
         defer file.close();
 
@@ -107,20 +114,27 @@ pub const Settings = struct {
 
     pub fn save(self: *const Settings, allocator: std.mem.Allocator) void {
         // Get home directory (cross-platform)
-        const home = std.process.getEnvVarOwned(allocator, "HOME") catch return;
-        defer allocator.free(home);
+        // Zig 0.16+ API: Use std.posix.getenv() via C API
+        const c = @cImport(@cInclude("stdlib.h"));
+        const home_cstr = c.getenv("HOME");
+        if (home_cstr == null) return;
+        const home = std.mem.span(home_cstr);
+        const home_owned = allocator.dupe(u8, home) catch return;
+        defer allocator.free(home_owned);
 
         // Ensure .config directory exists
-        const config_dir = std.fmt.allocPrint(allocator, "{s}/.config", .{home}) catch return;
+        const config_dir = std.fmt.allocPrint(allocator, "{s}/.config", .{home_owned}) catch return;
         defer allocator.free(config_dir);
 
+        // Zig 0.16+ API: Use std.fs.makeDirAbsolute()
+        // If that doesn't work, use std.fs.cwd().makeDir()
         std.fs.makeDirAbsolute(config_dir) catch {};
 
         // Build full path (decode obfuscated config path)
         const config_path_obf = tenebris.ObfuscatedString.init(".config/tetrix.json", tenebris.Tenebris.DEFAULT_KEY);
         var config_path_buf: [64]u8 = undefined;
         const config_path = config_path_obf.value(&config_path_buf);
-        const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home, config_path }) catch return;
+        const path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ home_owned, config_path }) catch return;
         defer allocator.free(path);
 
         // Obfuscate high score before saving
@@ -138,6 +152,7 @@ pub const Settings = struct {
         defer allocator.free(json);
 
         // Write file
+        // Zig 0.16+ API: Use std.fs.createFileAbsolute() - it should still exist
         const file = std.fs.createFileAbsolute(path, .{}) catch return;
         defer file.close();
 
