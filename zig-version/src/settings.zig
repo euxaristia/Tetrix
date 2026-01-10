@@ -138,28 +138,19 @@ pub const Settings = struct {
     fn obfuscateHighScore(self: *const Settings, score: u32, buf: []u8) []const u8 {
         _ = self;
         const obfuscated = score +% obfuscation_constant; // Wrap on overflow
-        // Decode obfuscated "HS" prefix
-        const hs_prefix_obf = tenebris.ObfuscatedString.init("HS", tenebris.Tenebris.DEFAULT_KEY);
-        var hs_prefix_buf: [8]u8 = undefined;
-        const hs_prefix = hs_prefix_obf.value(&hs_prefix_buf);
-        const result = std.fmt.bufPrint(buf, "{s}{d}", .{ hs_prefix, obfuscated }) catch {
-            // Fallback if buffer too small
-            var fallback_buf: [8]u8 = undefined;
-            const fallback_prefix = hs_prefix_obf.value(&fallback_buf);
-            return std.fmt.bufPrint(buf, "{s}0", .{fallback_prefix}) catch "HS0";
-        };
+        // Use literal "HS" prefix (not obfuscated) for JSON compatibility
+        // The obfuscation is in the numeric value, not the prefix
+        const result = std.fmt.bufPrint(buf, "HS{d}", .{obfuscated}) catch "HS0";
         return result;
     }
 
     // Deobfuscate high score
     fn deobfuscateHighScore(self: *Settings, obfuscated: []const u8) u32 {
         _ = self;
-        // Check for obfuscated "HS" prefix
-        const hs_prefix_obf = tenebris.ObfuscatedString.init("HS", tenebris.Tenebris.DEFAULT_KEY);
-        var hs_prefix_buf: [8]u8 = undefined;
-        const hs_prefix = hs_prefix_obf.value(&hs_prefix_buf);
-        if (std.mem.startsWith(u8, obfuscated, hs_prefix)) {
-            const score_str = obfuscated[hs_prefix.len..];
+        // Check for "HS" prefix (literal, not obfuscated - for JSON compatibility)
+        // The prefix itself doesn't need obfuscation since it's just a marker
+        if (std.mem.startsWith(u8, obfuscated, "HS")) {
+            const score_str = obfuscated[2..];
             const obfuscated_int = std.fmt.parseInt(u32, score_str, 10) catch return 0;
             // Handle potential underflow with wrapping subtraction
             if (obfuscated_int >= obfuscation_constant) {
