@@ -2,7 +2,6 @@
 
 ![Zig](https://img.shields.io/badge/language-Zig-orange?logo=zig)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![CI](https://github.com/euxaristia/Tetrix/actions/workflows/ci.yml/badge.svg)
 
 A complete Tetris game implementation written from scratch in Zig using GLFW and OpenGL. Cross-platform support for Windows, Linux, and macOS.
 
