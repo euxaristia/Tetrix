@@ -59,10 +59,20 @@ pub const InputHandler = struct {
     }
 
     fn handleKeyRepeats(self: *InputHandler, game: *TetrisEngine, delta_time: f64, window: *c.GLFWwindow) void {
-        // Left key
+        // Check both left and right states
         const left_state = c.glfwGetKey(window, c.GLFW_KEY_LEFT) == c.GLFW_PRESS or
             c.glfwGetKey(window, c.GLFW_KEY_A) == c.GLFW_PRESS;
+        const right_state = c.glfwGetKey(window, c.GLFW_KEY_RIGHT) == c.GLFW_PRESS or
+            c.glfwGetKey(window, c.GLFW_KEY_D) == c.GLFW_PRESS;
 
+        // If both are pressed, ignore both to prevent flashing
+        if (left_state and right_state) {
+            self.left_pressed = false;
+            self.right_pressed = false;
+            return;
+        }
+
+        // Left key
         if (left_state) {
             if (!self.left_pressed) {
                 self.left_pressed = true;
@@ -84,9 +94,6 @@ pub const InputHandler = struct {
         }
 
         // Right key
-        const right_state = c.glfwGetKey(window, c.GLFW_KEY_RIGHT) == c.GLFW_PRESS or
-            c.glfwGetKey(window, c.GLFW_KEY_D) == c.GLFW_PRESS;
-
         if (right_state) {
             if (!self.right_pressed) {
                 self.right_pressed = true;
@@ -188,46 +195,53 @@ pub const InputHandler = struct {
         else
             (if (axes_count > 7) axes[7] < -0.5 else false) or (if (axes_count > 1) axes[1] < -0.5 else false);
 
-        // Handle D-pad left
-        if (left) {
-            if (!self.joy_left_pressed) {
-                self.joy_left_pressed = true;
-                self.left_hold_time = 0;
-                self.left_repeat_timer = 0;
-                _ = game.moveLeft();
-            } else {
-                self.left_hold_time += delta_time;
-                if (self.left_hold_time >= JOY_INITIAL_DELAY) {
-                    self.left_repeat_timer += delta_time;
-                    if (self.left_repeat_timer >= JOY_REPEAT_INTERVAL) {
-                        self.left_repeat_timer = 0;
-                        _ = game.moveLeft();
-                    }
-                }
-            }
-        } else {
+        // If both left and right are pressed, ignore both to prevent flashing
+        if (left and right) {
             self.joy_left_pressed = false;
-        }
-
-        // Handle D-pad right
-        if (right) {
-            if (!self.joy_right_pressed) {
-                self.joy_right_pressed = true;
-                self.right_hold_time = 0;
-                self.right_repeat_timer = 0;
-                _ = game.moveRight();
-            } else {
-                self.right_hold_time += delta_time;
-                if (self.right_hold_time >= JOY_INITIAL_DELAY) {
-                    self.right_repeat_timer += delta_time;
-                    if (self.right_repeat_timer >= JOY_REPEAT_INTERVAL) {
-                        self.right_repeat_timer = 0;
-                        _ = game.moveRight();
+            self.joy_right_pressed = false;
+            // Continue to handle other buttons (up, down, etc.)
+        } else {
+            // Handle D-pad left
+            if (left) {
+                if (!self.joy_left_pressed) {
+                    self.joy_left_pressed = true;
+                    self.left_hold_time = 0;
+                    self.left_repeat_timer = 0;
+                    _ = game.moveLeft();
+                } else {
+                    self.left_hold_time += delta_time;
+                    if (self.left_hold_time >= JOY_INITIAL_DELAY) {
+                        self.left_repeat_timer += delta_time;
+                        if (self.left_repeat_timer >= JOY_REPEAT_INTERVAL) {
+                            self.left_repeat_timer = 0;
+                            _ = game.moveLeft();
+                        }
                     }
                 }
+            } else {
+                self.joy_left_pressed = false;
             }
-        } else {
-            self.joy_right_pressed = false;
+
+            // Handle D-pad right
+            if (right) {
+                if (!self.joy_right_pressed) {
+                    self.joy_right_pressed = true;
+                    self.right_hold_time = 0;
+                    self.right_repeat_timer = 0;
+                    _ = game.moveRight();
+                } else {
+                    self.right_hold_time += delta_time;
+                    if (self.right_hold_time >= JOY_INITIAL_DELAY) {
+                        self.right_repeat_timer += delta_time;
+                        if (self.right_repeat_timer >= JOY_REPEAT_INTERVAL) {
+                            self.right_repeat_timer = 0;
+                            _ = game.moveRight();
+                        }
+                    }
+                }
+            } else {
+                self.joy_right_pressed = false;
+            }
         }
 
         // Handle D-pad down (soft drop)
