@@ -574,8 +574,9 @@ pub const AudioPlayer = struct {
             defer self.mutex.unlock();
 
             if (handle) |h| {
-                // Drain and close - errors are expected if already closed
-                _ = c.snd_pcm_drain(h);
+                // Drop (don't drain) to prevent sound on exit when muted
+                // snd_pcm_drop stops immediately without playing buffered audio
+                _ = c.snd_pcm_drop(h);
                 _ = c.snd_pcm_close(h);
             }
             self.pcm_handle = null;
@@ -843,8 +844,9 @@ pub const AudioPlayer = struct {
 
         // Cleanup ALSA (Linux)
         if (self.pcm_handle) |handle| {
-            // Drain and close - errors are expected if already closed by thread
-            _ = c.snd_pcm_drain(handle);
+            // Drop (don't drain) to prevent sound on exit when muted
+            // snd_pcm_drop stops immediately without playing buffered audio
+            _ = c.snd_pcm_drop(handle);
             _ = c.snd_pcm_close(handle);
             self.pcm_handle = null;
         }
