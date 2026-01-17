@@ -18,6 +18,10 @@ pub const InputHandler = struct {
     right_repeat_timer: f64 = 0,
     down_repeat_timer: f64 = 0,
 
+    // Conflict state tracking (when both left and right are pressed)
+    left_right_conflict: bool = false,
+    joy_left_right_conflict: bool = false,
+
     // Joystick state
     joystick_present: bool = false,
     joy_left_pressed: bool = false,
@@ -65,8 +69,21 @@ pub const InputHandler = struct {
         const right_state = c.glfwGetKey(window, c.GLFW_KEY_RIGHT) == c.GLFW_PRESS or
             c.glfwGetKey(window, c.GLFW_KEY_D) == c.GLFW_PRESS;
 
-        // If both are pressed, ignore both to prevent flashing
+        // If both are pressed, enter conflict state and ignore both
         if (left_state and right_state) {
+            self.left_right_conflict = true;
+            self.left_pressed = false;
+            self.right_pressed = false;
+            return;
+        }
+
+        // If we were in conflict, require both keys to be released before accepting new input
+        if (self.left_right_conflict) {
+            if (!left_state and !right_state) {
+                // Both released, clear conflict
+                self.left_right_conflict = false;
+            }
+            // Still in conflict or one key still held - ignore input
             self.left_pressed = false;
             self.right_pressed = false;
             return;
@@ -195,11 +212,21 @@ pub const InputHandler = struct {
         else
             (if (axes_count > 7) axes[7] < -0.5 else false) or (if (axes_count > 1) axes[1] < -0.5 else false);
 
-        // If both left and right are pressed, ignore both to prevent flashing
+        // If both left and right are pressed, enter conflict state and ignore both
         if (left and right) {
+            self.joy_left_right_conflict = true;
             self.joy_left_pressed = false;
             self.joy_right_pressed = false;
             // Continue to handle other buttons (up, down, etc.)
+        } else if (self.joy_left_right_conflict) {
+            // If we were in conflict, require both to be released before accepting new input
+            if (!left and !right) {
+                // Both released, clear conflict
+                self.joy_left_right_conflict = false;
+            }
+            // Still in conflict or one still held - ignore input
+            self.joy_left_pressed = false;
+            self.joy_right_pressed = false;
         } else {
             // Handle D-pad left
             if (left) {
