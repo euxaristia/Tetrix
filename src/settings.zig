@@ -5,7 +5,6 @@ pub const Settings = struct {
     high_score: u32 = 0,
     music_enabled: bool = true,
     is_fullscreen: bool = false,
-    use_controller: bool = true,
     const obfuscation_constant: u32 = 0x9E3779B9; // Golden ratio constant (same as DaniSnek)
 
     pub fn load(allocator: std.mem.Allocator) Settings {
@@ -111,18 +110,6 @@ pub const Settings = struct {
                 }
             }
         }
-
-        // Find useController
-        if (std.mem.indexOf(u8, content, "\"useController\":")) |idx| {
-            const start = idx + 16;
-            if (start + 4 <= content.len) {
-                if (std.mem.startsWith(u8, content[start..], "true")) {
-                    self.use_controller = true;
-                } else if (std.mem.startsWith(u8, content[start..], "false")) {
-                    self.use_controller = false;
-                }
-            }
-        }
     }
 
     pub fn save(self: *const Settings, allocator: std.mem.Allocator) void {
@@ -157,11 +144,10 @@ pub const Settings = struct {
         std.debug.print("Saving settings: high_score={d}, obfuscated={s}\n", .{ self.high_score, obfuscated_score });
 
         // Create JSON content with obfuscated high score
-        const json = std.fmt.allocPrint(allocator, "{{\"highScore\":\"{s}\",\"musicEnabled\":{},\"isFullscreen\":{},\"useController\":{}}}", .{
+        const json = std.fmt.allocPrint(allocator, "{{\"highScore\":\"{s}\",\"musicEnabled\":{},\"isFullscreen\":{}}}", .{
             obfuscated_score,
             self.music_enabled,
             self.is_fullscreen,
-            self.use_controller,
         }) catch return;
         defer allocator.free(json);
 

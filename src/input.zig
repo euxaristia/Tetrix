@@ -39,18 +39,14 @@ pub const InputHandler = struct {
         return .{};
     }
 
-    pub fn update(self: *InputHandler, game: *TetrisEngine, delta_time: f64, window: ?*c.GLFWwindow, music_enabled: *bool, fullscreen: *bool, window_width: *i32, window_height: *i32, use_controller: bool) void {
+    pub fn update(self: *InputHandler, game: *TetrisEngine, delta_time: f64, window: ?*c.GLFWwindow, music_enabled: *bool, fullscreen: *bool, window_width: *i32, window_height: *i32) void {
         if (window == null) return;
         const win = window.?;
 
-        if (use_controller) {
-            // Check joystick
-            self.joystick_present = c.glfwJoystickPresent(c.GLFW_JOYSTICK_1) == c.GLFW_TRUE;
-            if (self.joystick_present) {
-                self.handleJoystick(game, delta_time, music_enabled);
-            }
-        } else {
-            self.joystick_present = false;
+        // Check joystick
+        self.joystick_present = c.glfwJoystickPresent(c.GLFW_JOYSTICK_1) == c.GLFW_TRUE;
+        if (self.joystick_present) {
+            self.handleJoystick(game, delta_time, music_enabled);
         }
 
         // Handle key repeats
@@ -322,7 +318,7 @@ pub const InputHandler = struct {
         }
     }
 
-    pub fn isUsingController(self: *const InputHandler, use_controller: bool) bool {
-        return self.joystick_present and use_controller;
+    pub fn isUsingController(self: *const InputHandler) bool {
+        return self.joystick_present;
     }
 };

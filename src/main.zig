@@ -20,7 +20,6 @@ const WINDOW_HEIGHT = renderer_mod.WINDOW_HEIGHT;
 // Global state for callbacks
 var global_game: ?*TetrisEngine = null;
 var global_audio: ?*AudioPlayer = null;
-var global_settings: ?*Settings = null;
 var global_fullscreen: bool = false;
 var global_window_width: i32 = WINDOW_WIDTH;
 var global_window_height: i32 = WINDOW_HEIGHT;
@@ -86,7 +85,6 @@ pub fn main() !void {
     // Set global pointers for callbacks
     global_game = &game;
     global_audio = &audio;
-    global_settings = &settings;
 
     // Set callbacks
     _ = c.glfwSetKeyCallback(window, keyCallback);
@@ -118,14 +116,14 @@ pub fn main() !void {
         // Note: M key toggle is handled in key callback, not here
         // This just reads the current state for the input handler
         var music_enabled = audio.isEnabled();
-        input.update(&game, delta_time, window, &music_enabled, &global_fullscreen, &global_window_width, &global_window_height, settings.use_controller);
+        input.update(&game, delta_time, window, &music_enabled, &global_fullscreen, &global_window_width, &global_window_height);
         // Only update if input handler actually changed it (not for M key which uses toggle())
         if (music_enabled != audio.isEnabled()) {
             audio.setEnabled(music_enabled);
         }
 
         // Update renderer state
-        renderer.use_controller = input.isUsingController(settings.use_controller);
+        renderer.use_controller = input.isUsingController();
         renderer.music_enabled = audio.isEnabled();
 
         // Update game logic
@@ -164,7 +162,6 @@ pub fn main() !void {
     // Save settings on exit
     settings.music_enabled = audio.isEnabled();
     settings.is_fullscreen = global_fullscreen;
-    settings.use_controller = global_settings.?.use_controller;
     // Make sure we save the correct high score (use game.high_score if it's higher)
     if (game.high_score > settings.high_score) {
         std.debug.print("Exit: game.high_score ({d}) > settings.high_score ({d}), updating\n", .{ game.high_score, settings.high_score });
@@ -215,11 +212,6 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
                 if (global_audio) |audio| {
                     std.debug.print("Main: M key pressed - toggling music\n", .{});
                     audio.toggle();
-                }
-            },
-            67 => { // 'C'
-                if (global_settings) |s| {
-                    s.use_controller = !s.use_controller;
                 }
             },
             c.GLFW_KEY_F11 => {
