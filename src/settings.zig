@@ -5,6 +5,7 @@ pub const Settings = struct {
     high_score: u32 = 0,
     music_enabled: bool = true,
     is_fullscreen: bool = false,
+    use_controller: bool = true,
     const obfuscation_constant: u32 = 0x9E3779B9; // Golden ratio constant (same as DaniSnek)
 
     pub fn load(allocator: std.mem.Allocator) Settings {
@@ -30,7 +31,7 @@ pub const Settings = struct {
         std.debug.print("Decoded config_path: {s}\n", .{config_path});
 
         // Read file
-        // Zig 0.16+ API: Use std.fs.openFileAbsolute() 
+        // Zig 0.16+ API: Use std.fs.openFileAbsolute()
         // If that doesn't work, try std.fs.openFile() with absolute path
         const file = std.fs.openFileAbsolute(path, .{}) catch return settings;
         defer file.close();
@@ -42,7 +43,7 @@ pub const Settings = struct {
 
         // Parse JSON manually (simple format)
         settings.parseJson(content);
-        
+
         std.debug.print("Settings: loaded high_score={d} from file\n", .{settings.high_score});
 
         return settings;
@@ -57,12 +58,12 @@ pub const Settings = struct {
         if (std.mem.indexOf(u8, content, "\"highScore\":")) |idx| {
             const start = idx + 12;
             var end = start;
-            
+
             // Skip whitespace
             while (end < content.len and (content[end] == ' ' or content[end] == '\t')) {
                 end += 1;
             }
-            
+
             // Check if it's a string (obfuscated) or number (plain)
             if (end < content.len and content[end] == '"') {
                 // Obfuscated format: "HS1234567890"
@@ -110,6 +111,18 @@ pub const Settings = struct {
                 }
             }
         }
+
+        // Find useController
+        if (std.mem.indexOf(u8, content, "\"useController\":")) |idx| {
+            const start = idx + 16;
+            if (start + 4 <= content.len) {
+                if (std.mem.startsWith(u8, content[start..], "true")) {
+                    self.use_controller = true;
+                } else if (std.mem.startsWith(u8, content[start..], "false")) {
+                    self.use_controller = false;
+                }
+            }
+        }
     }
 
     pub fn save(self: *const Settings, allocator: std.mem.Allocator) void {
@@ -140,14 +153,15 @@ pub const Settings = struct {
         // Obfuscate high score before saving
         var obfuscated_buf: [32]u8 = undefined;
         const obfuscated_score = self.obfuscateHighScore(self.high_score, &obfuscated_buf);
-        
+
         std.debug.print("Saving settings: high_score={d}, obfuscated={s}\n", .{ self.high_score, obfuscated_score });
-        
+
         // Create JSON content with obfuscated high score
-        const json = std.fmt.allocPrint(allocator, "{{\"highScore\":\"{s}\",\"musicEnabled\":{},\"isFullscreen\":{}}}", .{
+        const json = std.fmt.allocPrint(allocator, "{{\"highScore\":\"{s}\",\"musicEnabled\":{},\"isFullscreen\":{},\"useController\":{}}}", .{
             obfuscated_score,
             self.music_enabled,
             self.is_fullscreen,
+            self.use_controller,
         }) catch return;
         defer allocator.free(json);
 

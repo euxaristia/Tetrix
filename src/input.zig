@@ -20,12 +20,12 @@ pub const InputHandler = struct {
 
     // Joystick state
     joystick_present: bool = false,
-    use_controller: bool = false,
     joy_left_pressed: bool = false,
     joy_right_pressed: bool = false,
     joy_down_pressed: bool = false,
     joy_up_pressed: bool = false,
     joy_a_pressed: bool = false,
+    joy_y_pressed: bool = false,
     joy_start_pressed: bool = false,
     joy_select_pressed: bool = false,
 
@@ -39,14 +39,18 @@ pub const InputHandler = struct {
         return .{};
     }
 
-    pub fn update(self: *InputHandler, game: *TetrisEngine, delta_time: f64, window: ?*c.GLFWwindow, music_enabled: *bool, fullscreen: *bool, window_width: *i32, window_height: *i32) void {
+    pub fn update(self: *InputHandler, game: *TetrisEngine, delta_time: f64, window: ?*c.GLFWwindow, music_enabled: *bool, fullscreen: *bool, window_width: *i32, window_height: *i32, use_controller: bool) void {
         if (window == null) return;
         const win = window.?;
 
-        // Check joystick
-        self.joystick_present = c.glfwJoystickPresent(c.GLFW_JOYSTICK_1) == c.GLFW_TRUE;
-        if (self.joystick_present) {
-            self.handleJoystick(game, delta_time, music_enabled);
+        if (use_controller) {
+            // Check joystick
+            self.joystick_present = c.glfwJoystickPresent(c.GLFW_JOYSTICK_1) == c.GLFW_TRUE;
+            if (self.joystick_present) {
+                self.handleJoystick(game, delta_time, music_enabled);
+            }
+        } else {
+            self.joystick_present = false;
         }
 
         // Handle key repeats
@@ -135,7 +139,7 @@ pub const InputHandler = struct {
     fn handleJoystick(self: *InputHandler, game: *TetrisEngine, delta_time: f64, music_enabled: *bool) void {
         // Check if joystick is a gamepad (preferred API for modern controllers like DualSense)
         const is_gamepad = c.glfwJoystickIsGamepad(c.GLFW_JOYSTICK_1) == c.GLFW_TRUE;
-        
+
         var gamepad_state: c.GLFWgamepadstate = undefined;
         var axes_count: c_int = 0;
         var buttons_count: c_int = 0;
@@ -162,7 +166,7 @@ pub const InputHandler = struct {
 
             buttons_ptr = c.glfwGetJoystickButtons(c.GLFW_JOYSTICK_1, &buttons_count);
             if (buttons_ptr == null) return;
-            
+
             axes = axes_ptr.?[0..@intCast(axes_count)];
             buttons = buttons_ptr.?[0..@intCast(buttons_count)];
         }
@@ -190,7 +194,6 @@ pub const InputHandler = struct {
 
         // Handle D-pad left
         if (left) {
-            self.use_controller = true;
             if (!self.joy_left_pressed) {
                 self.joy_left_pressed = true;
                 self.left_hold_time = 0;
@@ -212,7 +215,6 @@ pub const InputHandler = struct {
 
         // Handle D-pad right
         if (right) {
-            self.use_controller = true;
             if (!self.joy_right_pressed) {
                 self.joy_right_pressed = true;
                 self.right_hold_time = 0;
@@ -234,7 +236,6 @@ pub const InputHandler = struct {
 
         // Handle D-pad down (soft drop)
         if (down) {
-            self.use_controller = true;
             if (!self.joy_down_pressed) {
                 self.joy_down_pressed = true;
                 self.down_hold_time = 0;
@@ -259,14 +260,13 @@ pub const InputHandler = struct {
             buttons[c.GLFW_GAMEPAD_BUTTON_A] == c.GLFW_PRESS
         else
             buttons_count > 0 and buttons[0] == c.GLFW_PRESS;
-        
+
         const x_button = if (is_gamepad)
             buttons[c.GLFW_GAMEPAD_BUTTON_X] == c.GLFW_PRESS
         else
             buttons_count > 2 and buttons[2] == c.GLFW_PRESS;
 
         if (up or a_button or x_button) {
-            self.use_controller = true;
             if (!self.joy_up_pressed and !self.joy_a_pressed) {
                 self.joy_up_pressed = up;
                 self.joy_a_pressed = a_button or x_button;
@@ -283,7 +283,6 @@ pub const InputHandler = struct {
         else
             buttons_count > 7 and buttons[7] == c.GLFW_PRESS;
         if (start_button) {
-            self.use_controller = true;
             if (!self.joy_start_pressed) {
                 self.joy_start_pressed = true;
                 game.togglePause();
@@ -298,7 +297,6 @@ pub const InputHandler = struct {
         else
             buttons_count > 6 and buttons[6] == c.GLFW_PRESS;
         if (select_button) {
-            self.use_controller = true;
             if (!self.joy_select_pressed) {
                 self.joy_select_pressed = true;
                 if (game.state == .game_over) {
@@ -313,13 +311,18 @@ pub const InputHandler = struct {
         const y_button = if (is_gamepad)
             buttons[c.GLFW_GAMEPAD_BUTTON_Y] == c.GLFW_PRESS
         else
-            buttons_count > 3 and buttons[3] == c.GLFW_PRESS;
+            false; // Do not allow music toggle for non-gamepad devices
         if (y_button) {
-            music_enabled.* = !music_enabled.*;
+            if (!self.joy_y_pressed) {
+                self.joy_y_pressed = true;
+                music_enabled.* = !music_enabled.*;
+            }
+        } else {
+            self.joy_y_pressed = false;
         }
     }
 
-    pub fn isUsingController(self: *const InputHandler) bool {
-        return self.use_controller and self.joystick_present;
+    pub fn isUsingController(self: *const InputHandler, use_controller: bool) bool {
+        return self.joystick_present and use_controller;
     }
 };
