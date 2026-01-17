@@ -110,26 +110,60 @@ const AlsaHwParamsT = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_hw
 pub const snd_pcm_t = AlsaPcmT;
 pub const snd_pcm_hw_params_t = AlsaHwParamsT;
 
-fn stub_snd_pcm_open(_: ?*?*AlsaPcmT, _: [*:0]const u8, _: c_int, _: c_int) c_int { return -1; }
-fn stub_snd_pcm_close(_: ?*AlsaPcmT) c_int { return 0; }
-fn stub_snd_pcm_drain(_: ?*AlsaPcmT) c_int { return 0; }
-fn stub_snd_pcm_prepare(_: ?*AlsaPcmT) c_int { return -1; }
-fn stub_snd_pcm_writei(_: ?*AlsaPcmT, _: ?*const anyopaque, _: u64) i64 { return -1; }
-fn stub_snd_pcm_recover(_: ?*AlsaPcmT, _: c_int, _: c_int) c_int { return -1; }
-fn stub_snd_pcm_hw_params_malloc(_: ?*?*AlsaHwParamsT) c_int { return -1; }
+fn stub_snd_pcm_open(_: ?*?*AlsaPcmT, _: [*:0]const u8, _: c_int, _: c_int) c_int {
+    return -1;
+}
+fn stub_snd_pcm_close(_: ?*AlsaPcmT) c_int {
+    return 0;
+}
+fn stub_snd_pcm_drain(_: ?*AlsaPcmT) c_int {
+    return 0;
+}
+fn stub_snd_pcm_drop(_: ?*AlsaPcmT) c_int {
+    return 0;
+}
+fn stub_snd_pcm_prepare(_: ?*AlsaPcmT) c_int {
+    return -1;
+}
+fn stub_snd_pcm_writei(_: ?*AlsaPcmT, _: ?*const anyopaque, _: u64) i64 {
+    return -1;
+}
+fn stub_snd_pcm_recover(_: ?*AlsaPcmT, _: c_int, _: c_int) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_malloc(_: ?*?*AlsaHwParamsT) c_int {
+    return -1;
+}
 fn stub_snd_pcm_hw_params_free(_: ?*AlsaHwParamsT) void {}
-fn stub_snd_pcm_hw_params_any(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT) c_int { return -1; }
-fn stub_snd_pcm_hw_params_set_access(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_int) c_int { return -1; }
-fn stub_snd_pcm_hw_params_set_format(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_int) c_int { return -1; }
-fn stub_snd_pcm_hw_params_set_channels(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_uint) c_int { return -1; }
-fn stub_snd_pcm_hw_params_set_rate_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*c_uint, _: ?*c_int) c_int { return -1; }
-fn stub_snd_pcm_hw_params(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT) c_int { return -1; }
-fn stub_snd_pcm_hw_params_set_buffer_size_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*u64) c_int { return -1; }
-fn stub_snd_pcm_hw_params_set_period_size_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*u64, _: ?*c_int) c_int { return -1; }
+fn stub_snd_pcm_hw_params_any(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_set_access(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_int) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_set_format(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_int) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_set_channels(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: c_uint) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_set_rate_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*c_uint, _: ?*c_int) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_set_buffer_size_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*u64) c_int {
+    return -1;
+}
+fn stub_snd_pcm_hw_params_set_period_size_near(_: ?*AlsaPcmT, _: ?*AlsaHwParamsT, _: ?*u64, _: ?*c_int) c_int {
+    return -1;
+}
 
 pub const snd_pcm_open = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_open else stub_snd_pcm_open;
 pub const snd_pcm_close = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_close else stub_snd_pcm_close;
 pub const snd_pcm_drain = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_drain else stub_snd_pcm_drain;
+pub const snd_pcm_drop = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_drop else stub_snd_pcm_drop;
 pub const snd_pcm_prepare = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_prepare else stub_snd_pcm_prepare;
 pub const snd_pcm_writei = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_writei else stub_snd_pcm_writei;
 pub const snd_pcm_recover = if (builtin.target.os.tag == .linux) c_bindings.snd_pcm_recover else stub_snd_pcm_recover;
@@ -170,12 +204,24 @@ pub const WAVE_FORMAT_PCM = if (builtin.target.os.tag == .windows) c_bindings.WA
 pub const CALLBACK_NULL = if (builtin.target.os.tag == .windows) c_bindings.CALLBACK_NULL else @as(c_ulong, 0);
 
 // waveOut function stubs for non-Windows
-fn stub_waveOutOpen(_: *HWAVEOUT, _: c_uint, _: *const WAVEFORMATEX, _: c_ulong, _: c_ulong, _: c_ulong) c_int { return -1; }
-fn stub_waveOutClose(_: HWAVEOUT) c_int { return -1; }
-fn stub_waveOutPrepareHeader(_: HWAVEOUT, _: *anyopaque, _: c_uint) c_int { return -1; }
-fn stub_waveOutUnprepareHeader(_: HWAVEOUT, _: *anyopaque, _: c_uint) c_int { return -1; }
-fn stub_waveOutWrite(_: HWAVEOUT, _: *anyopaque, _: c_uint) c_int { return -1; }
-fn stub_waveOutReset(_: HWAVEOUT) c_int { return -1; }
+fn stub_waveOutOpen(_: *HWAVEOUT, _: c_uint, _: *const WAVEFORMATEX, _: c_ulong, _: c_ulong, _: c_ulong) c_int {
+    return -1;
+}
+fn stub_waveOutClose(_: HWAVEOUT) c_int {
+    return -1;
+}
+fn stub_waveOutPrepareHeader(_: HWAVEOUT, _: *anyopaque, _: c_uint) c_int {
+    return -1;
+}
+fn stub_waveOutUnprepareHeader(_: HWAVEOUT, _: *anyopaque, _: c_uint) c_int {
+    return -1;
+}
+fn stub_waveOutWrite(_: HWAVEOUT, _: *anyopaque, _: c_uint) c_int {
+    return -1;
+}
+fn stub_waveOutReset(_: HWAVEOUT) c_int {
+    return -1;
+}
 
 // waveOut functions
 pub const waveOutOpen = if (builtin.target.os.tag == .windows) c_bindings.waveOutOpen else stub_waveOutOpen;
