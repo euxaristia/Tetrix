@@ -19,9 +19,30 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: barichello/godot-ci:4.6
+    env:
+      GODOT_VERSION: 4.6-stable
+      GODOT_TEMPLATES_DIR: /github/home/.local/share/godot/export_templates/4.6.stable
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends libfontconfig1 unzip wget
+
+      - name: Install Godot Export Templates
+        run: |
+          mkdir -p "${GODOT_TEMPLATES_DIR}"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v4.6-stable_export_templates.tpz" -O /tmp/templates.tpz
+          rm -rf /tmp/godot-templates
+          mkdir -p /tmp/godot-templates
+          unzip -o /tmp/templates.tpz -d /tmp/godot-templates
+          if [ -d /tmp/godot-templates/templates ]; then
+            cp -f /tmp/godot-templates/templates/* "${GODOT_TEMPLATES_DIR}/"
+          else
+            cp -f /tmp/godot-templates/* "${GODOT_TEMPLATES_DIR}/"
+          fi
 
       - name: Build Web Export
         run: |
