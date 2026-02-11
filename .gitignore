@@ -1,10 +1,7 @@
-.build/
 .idea/
 .vscode/
 
-# Zig build artifacts
-.zig-cache/
-zig-out/
-simple_alsa_test
-test_audio
-main
+# Godot
+.godot/
+.import/
+export_presets.cfg
