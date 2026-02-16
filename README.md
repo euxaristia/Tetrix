@@ -1,10 +1,18 @@
 # Tetrix (Godot 4.6)
 
-Tetrix is now a pure Godot 4.6 implementation of the original project, targeting the **Compatibility renderer** so it can run on desktop and export cleanly to web.
+Tetrix is a fast, classic-style falling-block puzzle game built in Godot 4.6. It ships as a self-contained project with deterministic core rules, responsive controls, and web-friendly rendering.
+
+## What Tetrix Is
+
+- A complete Tetris-like game loop with score, level progression, lock delay, and game over flow
+- A clean Godot-first codebase with gameplay logic separated from rendering/input/audio systems
+- A desktop-and-web target project using Godot's Compatibility renderer
+- A compact project intended to be easy to run, modify, and extend
 
 ## Requirements
 
 - Godot `4.6` (stable)
+- GPLv3 license (see `LICENSE`)
 
 ## Run
 
@@ -24,6 +32,15 @@ godot --path .
 - `scripts/audio_player.gd` - procedural melody playback (Korobeiniki + rare Jingle Bells variant)
 - `scripts/game_renderer.gd` - complete 2D renderer/UI overlays
 - `scripts/settings.gd` - persistent settings and high-score obfuscation
+
+## Gameplay Features
+
+- 7 tetromino types with rotation handling and collision checks
+- Ghost piece and hard drop/soft drop behavior
+- Line clearing and score progression tied to level speed
+- Keyboard and controller support with repeat/conflict handling
+- Optional procedural music playback
+- Persistent settings and high score storage
 
 ## Controls
 
@@ -48,4 +65,4 @@ Settings are stored in `user://tetrix.json`:
 
 ## Web Export
 
-The project is configured for web-friendly rendering via the Compatibility backend. Export templates and browser packaging follow standard Godot web export workflow.
+The project is configured for web-friendly rendering through the Compatibility backend. Export templates and browser packaging follow the standard Godot web export workflow.
