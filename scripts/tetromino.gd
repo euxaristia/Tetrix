@@ -38,14 +38,14 @@ func get_blocks() -> Array[Vector2i]:
 func get_color() -> Color:
 	return color_for_type(piece_type)
 
-func moved(dx: int, dy: int):
-	var next = get_script().new(piece_type, position.x + dx, position.y + dy)
+func moved(dx: int, dy: int) -> TetrixTetromino:
+	var next := get_script().new(piece_type, position.x + dx, position.y + dy) as TetrixTetromino
 	next.rotation = rotation
 	return next
 
-func rotated():
+func rotated() -> TetrixTetromino:
 	var max_rotations := 1 if piece_type == PieceType.O else 4
-	var next = get_script().new(piece_type, position.x, position.y)
+	var next := get_script().new(piece_type, position.x, position.y) as TetrixTetromino
 	next.rotation = (rotation + 1) % max_rotations
 	return next
 

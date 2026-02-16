@@ -51,6 +51,9 @@ var _melody: Array = []
 var _jingle_bells_melody: Array = []
 
 func _ready() -> void:
+	_last_enabled = enabled
+	_last_playing = playing
+	_fade_volume = 1.0 if enabled and playing else 0.0
 	_setup_melodies()
 	var stream := AudioStreamGenerator.new()
 	stream.mix_rate = SAMPLE_RATE
@@ -78,9 +81,13 @@ func _exit_tree() -> void:
 func play_music() -> void:
 	if enabled:
 		playing = true
+	if not is_inside_tree():
+		_last_playing = playing
 
 func stop_music() -> void:
 	playing = false
+	if not is_inside_tree():
+		_last_playing = playing
 
 func toggle_music() -> void:
 	set_enabled(not enabled)
@@ -91,6 +98,10 @@ func set_enabled(value: bool) -> void:
 	enabled = value
 	if not enabled:
 		playing = false
+	if not is_inside_tree():
+		_last_enabled = enabled
+		_last_playing = playing
+		_fade_volume = 1.0 if enabled and playing else 0.0
 
 func is_enabled() -> bool:
 	return enabled

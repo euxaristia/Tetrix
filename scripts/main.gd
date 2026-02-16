@@ -28,9 +28,9 @@ func _ready() -> void:
 	renderer = TetrixRenderer.new()
 	if not OS.has_feature("headless") and DisplayServer.get_name() != "headless":
 		audio_player = TetrixAudioPlayer.new()
+		audio_player.set_enabled(music_enabled)
 		add_child(audio_player)
 		audio_player.start()
-		audio_player.set_enabled(music_enabled)
 	else:
 		audio_player = null
 
