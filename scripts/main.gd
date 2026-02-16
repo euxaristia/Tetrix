@@ -39,7 +39,11 @@ func _ready() -> void:
 	queue_redraw()
 
 func _process(delta: float) -> void:
+	var old_music_enabled := music_enabled
 	music_enabled = input_handler.update(game, delta, music_enabled)
+	if old_music_enabled != music_enabled:
+		_save_current_settings()
+
 	if audio_player != null and music_enabled != audio_player.is_enabled():
 		audio_player.set_enabled(music_enabled)
 
@@ -57,7 +61,7 @@ func _process(delta: float) -> void:
 
 	if game.score > high_score_saved:
 		high_score_saved = game.score
-		TetrixSettings.save_settings(high_score_saved, audio_player.is_enabled() if audio_player != null else music_enabled, is_fullscreen)
+		_save_current_settings()
 
 	if high_score_saved > game.high_score:
 		game.set_high_score(high_score_saved)
@@ -87,12 +91,14 @@ func _input(event: InputEvent) -> void:
 					music_enabled = audio_player.is_enabled()
 				else:
 					music_enabled = not music_enabled
+				_save_current_settings()
 			KEY_F11:
 				toggle_fullscreen()
 
 func toggle_fullscreen() -> void:
 	is_fullscreen = not is_fullscreen
 	_apply_fullscreen(is_fullscreen)
+	_save_current_settings()
 
 func _apply_fullscreen(value: bool) -> void:
 	if OS.has_feature("web"):
@@ -103,10 +109,13 @@ func _apply_fullscreen(value: bool) -> void:
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 
+func _save_current_settings() -> void:
+	var final_high := maxi(high_score_saved, game.high_score if game != null else high_score_saved)
+	TetrixSettings.save_settings(final_high, music_enabled, is_fullscreen)
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
-		var final_high := maxi(high_score_saved, game.high_score if game != null else high_score_saved)
-		TetrixSettings.save_settings(final_high, audio_player.is_enabled() if audio_player != null else music_enabled, is_fullscreen)
+		_save_current_settings()
 
 func _exit_tree() -> void:
 	if audio_player != null:

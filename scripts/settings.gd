@@ -13,11 +13,10 @@ static func load_settings() -> Dictionary:
 	if not FileAccess.file_exists(CONFIG_PATH):
 		return settings
 
-	var file := FileAccess.open(CONFIG_PATH, FileAccess.READ)
-	if file == null:
+	var content := FileAccess.get_file_as_string(CONFIG_PATH)
+	if content.is_empty():
 		return settings
 
-	var content := file.get_as_text()
 	var parsed: Variant = JSON.parse_string(content)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return settings
@@ -27,12 +26,23 @@ static func load_settings() -> Dictionary:
 		var value: Variant = data["highScore"]
 		if typeof(value) == TYPE_STRING:
 			settings["high_score"] = _deobfuscate_high_score(value)
-		elif typeof(value) == TYPE_INT:
-			settings["high_score"] = value
-	if data.has("musicEnabled") and typeof(data["musicEnabled"]) == TYPE_BOOL:
-		settings["music_enabled"] = data["musicEnabled"]
-	if data.has("isFullscreen") and typeof(data["isFullscreen"]) == TYPE_BOOL:
-		settings["is_fullscreen"] = data["isFullscreen"]
+		elif typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+			settings["high_score"] = int(value)
+	
+	if data.has("musicEnabled"):
+		var val: Variant = data["musicEnabled"]
+		if typeof(val) == TYPE_BOOL:
+			settings["music_enabled"] = val
+		elif typeof(val) == TYPE_INT or typeof(val) == TYPE_FLOAT:
+			settings["music_enabled"] = bool(val)
+			
+	if data.has("isFullscreen"):
+		var val: Variant = data["isFullscreen"]
+		if typeof(val) == TYPE_BOOL:
+			settings["is_fullscreen"] = val
+		elif typeof(val) == TYPE_INT or typeof(val) == TYPE_FLOAT:
+			settings["is_fullscreen"] = bool(val)
+			
 	return settings
 
 static func save_settings(high_score: int, music_enabled: bool, is_fullscreen: bool) -> void:
@@ -42,9 +52,10 @@ static func save_settings(high_score: int, music_enabled: bool, is_fullscreen: b
 		"isFullscreen": is_fullscreen,
 	}
 	var file := FileAccess.open(CONFIG_PATH, FileAccess.WRITE)
-	if file == null:
-		return
-	file.store_string(JSON.stringify(payload))
+	if file != null:
+		file.store_string(JSON.stringify(payload))
+		file.flush()
+		file = null # Explicitly close
 
 static func _obfuscate_high_score(score: int) -> String:
 	var obfuscated := (score + OBFUSCATION_CONSTANT) & 0xFFFFFFFF
